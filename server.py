@@ -1,0 +1,365 @@
+"""
+Crypto Snapshot Pro A2A Endpoint for OKX.AI Marketplace
+Agent ID: #3613 "Crypto Snapshot Pro"
+Service: Professional Multi-Factor Market Analysis ($0.50 per request)
+"""
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import httpx
+import time
+from typing import Optional
+
+app = FastAPI(title="Crypto Snapshot Pro A2A Endpoint")
+
+# Binance Public API Base URL (ПРАВИЛЬНЫЙ)
+BINANCE_API = "https://api.binance.com/api/v3"
+
+_cache = {}
+_CACHE_TTL = 10  # секунд
+
+
+class A2ARequest(BaseModel):
+    agentId: str
+    message: dict
+    metadata: Optional[dict] = {}
+
+
+class A2AResponse(BaseModel):
+    message: dict
+
+
+def calculate_rsi(closes: list[float], period: int = 14) -> float:
+    if len(closes) < period + 1:
+        return 50.0
+    gains, losses = [], []
+    for i in range(1, len(closes)):
+        diff = closes[i] - closes[i - 1]
+        gains.append(diff if diff >= 0 else 0)
+        losses.append(0 if diff >= 0 else abs(diff))
+    avg_gain = sum(gains[-period:]) / period
+    avg_loss = sum(losses[-period:]) / period
+    if avg_loss == 0:
+        return 100.0
+    rs = avg_gain / avg_loss
+    return round(100 - (100 / (1 + rs)), 1)
+
+
+def calculate_ema(prices: list[float], period: int) -> float:
+    if not prices:
+        return 0
+    multiplier = 2 / (period + 1)
+    ema = prices[0]
+    for price in prices[1:]:
+        ema = (price - ema) * multiplier + ema
+    return round(ema, 2)
+
+
+def calculate_macd(closes: list[float]) -> tuple[float, float, float]:
+    """Calculate MACD (12, 26, 9) - returns (macd, signal, histogram)"""
+    if len(closes) < 26:
+        return 0.0, 0.0, 0.0
+    ema12 = calculate_ema(closes, 12)
+    ema26 = calculate_ema(closes, 26)
+    macd = ema12 - ema26
+    # Signal line (9-period EMA of MACD)
+    macd_values = [macd]  # Simplified - in production would track history
+    signal = calculate_ema(macd_values, 9) if len(macd_values) >= 9 else macd
+    histogram = macd - signal
+    return round(macd, 2), round(signal, 2), round(histogram, 2)
+
+
+def calculate_bollinger_bands(closes: list[float], period: int = 20, std_dev: float = 2) -> tuple[float, float, float]:
+    """Calculate Bollinger Bands - returns (upper, middle, lower)"""
+    if len(closes) < period:
+        return 0.0, 0.0, 0.0
+    recent = closes[-period:]
+    middle = sum(recent) / period
+    variance = sum((x - middle) ** 2 for x in recent) / period
+    std = variance ** 0.5
+    upper = middle + std_dev * std
+    lower = middle - std_dev * std
+    return round(upper, 2), round(middle, 2), round(lower, 2)
+
+
+def detect_rsi_divergence(rsi: float, closes: list[float]) -> str:
+    """Detect RSI divergence - returns 'bullish', 'bearish', or 'none'"""
+    if len(closes) < 10:
+        return 'none'
+    recent_closes = closes[-10:]
+    price_trend = recent_closes[-1] - recent_closes[0]
+    # Simplified divergence check
+    if price_trend < 0 and rsi > 50:
+        return 'bullish'  # Price down, RSI up
+    elif price_trend > 0 and rsi < 50:
+        return 'bearish'  # Price up, RSI down
+    return 'none'
+
+
+def calculate_pivot_points(high: float, low: float, close: float) -> dict:
+    """Calculate Pivot Points - returns dict with pivot, support, resistance"""
+    pivot = (high + low + close) / 3
+    r1 = 2 * pivot - low
+    s1 = 2 * pivot - high
+    r2 = pivot + (high - low)
+    s2 = pivot - (high - low)
+    return {
+        'pivot': round(pivot, 2),
+        'r1': round(r1, 2),
+        's1': round(s1, 2),
+        'r2': round(r2, 2),
+        's2': round(s2, 2)
+    }
+
+
+def get_signal_from_factors(rsi: float, price_ema20: float, price_ema50: float,
+                           volume_ratio: float, high_low_range: float,
+                           macd: float, macd_signal: float, macd_hist: float,
+                           bb_upper: float, bb_middle: float, bb_lower: float,
+                           rsi_divergence: str, pivot: dict) -> tuple[str, str, int, int]:
+    long_score, short_score = 0, 0
+
+    # 1. RSI (momentum)
+    if rsi < 30:
+        long_score += 2
+    elif rsi > 70:
+        short_score += 2
+    elif rsi < 40:
+        long_score += 1
+    elif rsi > 60:
+        short_score += 1
+
+    # 2. EMA Trend (9, 21, 50)
+    if price_ema20 > price_ema50:
+        long_score += 1
+    else:
+        short_score += 1
+
+    # 3. MACD
+    if macd > macd_signal and macd_hist > 0:
+        long_score += 1
+    elif macd < macd_signal and macd_hist < 0:
+        short_score += 1
+
+    # 4. Bollinger Bands
+    if bb_upper > 0 and bb_lower > 0:
+        bb_position = (bb_middle - bb_lower) / (bb_upper - bb_lower) if bb_upper != bb_lower else 0.5
+        if bb_position < 0.2:
+            long_score += 1
+        elif bb_position > 0.8:
+            short_score += 1
+
+    # 5. Volume Anomaly
+    if volume_ratio > 1.5:
+        if long_score > short_score:
+            long_score += 1
+        else:
+            short_score += 1
+
+    # 6. RSI Divergence
+    if rsi_divergence == 'bullish':
+        long_score += 1
+    elif rsi_divergence == 'bearish':
+        short_score += 1
+
+    # 7. ATR (volatility)
+    if high_low_range > 0.03:
+        if long_score > short_score:
+            long_score += 1
+        else:
+            short_score += 1
+
+    # 8. Pivot Points
+    if pivot:
+        current_price = bb_middle
+        if current_price > pivot['pivot']:
+            long_score += 0.5
+        else:
+            short_score += 0.5
+
+    if long_score >= 4:
+        return "LONG", "🚀 Strong Bullish Setup", long_score, short_score
+    elif short_score >= 4:
+        return "SHORT", "🔥 Strong Bearish Setup", long_score, short_score
+    elif long_score > short_score:
+        return "LONG", "⚡ Mild Bullish Bias", long_score, short_score
+    elif short_score > long_score:
+        return "SHORT", "⚠️ Mild Bearish Bias", long_score, short_score
+    return "HOLD", "➡️ Neutral — Wait for Setup", long_score, short_score
+
+
+def format_price(price: float) -> str:
+    if price >= 1000:
+        return f"${price:,.2f}"
+    elif price >= 1:
+        return f"${price:.2f}"
+    elif price >= 0.01:
+        return f"${price:.4f}"
+    return f"${price:.6f}"
+
+
+async def fetch_ticker(symbol: str) -> dict:
+    cache_key = f"ticker_{symbol}"
+    now = time.time()
+    if cache_key in _cache and now - _cache[cache_key]["time"] < _CACHE_TTL:
+        return _cache[cache_key]["data"]
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.get(f"{BINANCE_API}/ticker/24hr", params={"symbol": symbol})
+        if response.status_code != 200:
+            raise HTTPException(status_code=400, detail=f"Binance API error: {response.text}")
+        data = response.json()
+        if not data or "lastPrice" not in data:
+            raise HTTPException(status_code=400, detail=f"Symbol {symbol} not found on Binance")
+        _cache[cache_key] = {"data": data, "time": now}
+        return data
+
+
+async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> list[dict]:
+    cache_key = f"kline_{symbol}_{interval}_{limit}"
+    now = time.time()
+    if cache_key in _cache and now - _cache[cache_key]["time"] < _CACHE_TTL:
+        return _cache[cache_key]["data"]
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.get(f"{BINANCE_API}/klines", params={
+            "symbol": symbol, "interval": interval, "limit": limit
+        })
+        if response.status_code != 200:
+            raise HTTPException(status_code=400, detail=f"Binance API error: {response.text}")
+        data = response.json()
+        klines = []
+        for k in data:
+            klines.append({
+                "close": float(k[4]),
+                "high": float(k[2]),
+                "low": float(k[3]),
+                "volume": float(k[5]),
+                "time": k[0]
+            })
+        _cache[cache_key] = {"data": klines, "time": now}
+        return klines
+
+
+@app.post("/", response_model=A2AResponse)
+async def crypto_snapshot(request: A2ARequest):
+    content = request.message.get("content", "").strip().upper()
+    if not content:
+        raise HTTPException(status_code=400, detail="Symbol is required. Example: BTC, ETH, SOL")
+    symbol = f"{content}USDT" if "USDT" not in content else content
+
+    try:
+        ticker = await fetch_ticker(symbol)
+        current_price = float(ticker.get("lastPrice", 0))
+        change_24h = float(ticker.get("priceChangePercent", 0))
+        volume_24h = float(ticker.get("quoteVolume", 0))
+        high_24h = float(ticker.get("highPrice", 0))
+        low_24h = float(ticker.get("lowPrice", 0))
+
+        if current_price == 0:
+            raise HTTPException(status_code=400, detail=f"Invalid price for {symbol}")
+
+        klines = await fetch_klines(symbol)
+        closes = [k["close"] for k in klines]
+        volumes = [k["volume"] for k in klines]
+
+        # Calculate all 8 factors
+        rsi = calculate_rsi(closes, 14)
+        ema20 = calculate_ema(closes[-20:], 20) if len(closes) >= 20 else closes[-1]
+        ema50 = calculate_ema(closes[-50:], 50) if len(closes) >= 50 else closes[-1]
+        avg_volume = sum(volumes[-20:]) / 20 if len(volumes) >= 20 else volumes[-1]
+        current_volume = volumes[-1] if volumes else 0
+        volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
+        high_low_range = (high_24h - low_24h) / low_24h if low_24h > 0 else 0
+
+        # New factors
+        macd, macd_signal, macd_hist = calculate_macd(closes)
+        bb_upper, bb_middle, bb_lower = calculate_bollinger_bands(closes)
+        rsi_divergence = detect_rsi_divergence(rsi, closes)
+        pivot = calculate_pivot_points(high_24h, low_24h, current_price)
+
+        signal, signal_desc, long_score, short_score = get_signal_from_factors(
+            rsi, ema20, ema50, volume_ratio, high_low_range,
+            macd, macd_signal, macd_hist,
+            bb_upper, bb_middle, bb_lower,
+            rsi_divergence, pivot
+        )
+
+        atr_proxy = high_low_range * current_price
+        support = low_24h
+        resistance = high_24h
+
+        if signal == "LONG":
+            entry = support + (resistance - support) * 0.2
+            target = entry + (entry - support) * 2
+            stop = support - atr_proxy * 0.5
+            risk_reward = (target - entry) / (entry - stop) if entry > stop else 0
+        elif signal == "SHORT":
+            entry = resistance - (resistance - support) * 0.2
+            target = entry - (resistance - entry) * 2
+            stop = resistance + atr_proxy * 0.5
+            risk_reward = (entry - target) / (stop - entry) if stop > entry else 0
+        else:
+            entry = current_price
+            target = current_price * 1.05
+            stop = current_price * 0.95
+            risk_reward = 1.0
+
+        total_score = long_score + short_score
+        if total_score >= 5:
+            conviction = "VERY HIGH"
+        elif total_score >= 4:
+            conviction = "HIGH"
+        elif total_score >= 3:
+            conviction = "MEDIUM"
+        else:
+            conviction = "LOW"
+
+        result = f"""📊 CRYPTO SNAPSHOT PRO — {symbol.replace('USDT', '/USDT')}
+
+{signal_desc}
+📊 Conviction: {conviction}
+🎯 Score: {long_score} LONG / {short_score} SHORT
+💡 Reason: {'Bullish factors dominate.' if long_score > short_score else 'Bearish factors dominate.' if short_score > long_score else 'Mixed signals. Wait for confirmation.'}
+
+📈 TECHNICALS
+• Price: {format_price(current_price)} ({change_24h:+.2f}%)
+• RSI(14): {rsi:.1f} ({'oversold' if rsi < 30 else 'overbought' if rsi > 70 else 'neutral'})
+• EMA(20): {format_price(ema20)}
+• EMA(50): {format_price(ema50)}
+• Volume Ratio: {volume_ratio:.2f}x
+
+🎯 STRATEGY
+• Entry: {format_price(entry)}
+• Target: {format_price(target)}
+• Stop: {format_price(stop)}
+• Risk/Reward: 1:{risk_reward:.2f}
+
+📌 KEY LEVELS
+• Support: {format_price(support)}
+• Resistance: {format_price(resistance)}
+• 24h High: {format_price(high_24h)}
+• 24h Low: {format_price(low_24h)}
+"""
+        result += "\n\n⚠️ Risk Disclosure: This is NOT financial advice. Always manage risk. Past performance does not guarantee future results."
+        return A2AResponse(message={"role": "assistant", "content": result})
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "service": "crypto-snapshot-pro"}
+
+
+@app.get("/")
+async def root():
+    return {
+        "service": "Crypto Snapshot Pro A2A Endpoint",
+        "agentId": "3613",
+        "version": "2.1.0",
+        "data_source": "Binance Public API",
+        "supported_pairs": "All Binance spot pairs (BTCUSDT, ETHUSDT, SOLUSDT, etc.)",
+        "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "5-Factor Scoring"]
+    }
