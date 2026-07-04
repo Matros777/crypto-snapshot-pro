@@ -111,7 +111,3 @@ MIT
 - [Render Deployment](https://render.com)
 git push
 ```
-
----
-
-**Босс, README добавлен.** 🐋🔥
