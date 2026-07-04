@@ -109,5 +109,3 @@ MIT
 - [OKX.AI Agent Profile](https://okx.ai/agents)
 - [GitHub Repository](https://github.com/your-username/crypto-snapshot-pro)
 - [Render Deployment](https://render.com)
-git push
-```
