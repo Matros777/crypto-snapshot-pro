@@ -363,3 +363,124 @@ async def root():
         "supported_pairs": "All Binance spot pairs (BTCUSDT, ETHUSDT, SOLUSDT, etc.)",
         "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "5-Factor Scoring"]
     }
+
+
+# A2A-совместимый эндпоинт для OKX.AI
+@app.post("/a2a")
+async def a2a_handler(request: dict):
+    """
+    A2A-совместимый эндпоинт для OKX.AI
+    Обрабатывает запросы от Onchain OS и возвращает сигналы
+    """
+    try:
+        # Извлекаем символ из запроса
+        content = request.get("message", {}).get("content", "").strip()
+        if not content:
+            return {"error": "Symbol required"}
+        
+        # Проверка на OKX.AI команды
+        okx_response = handle_okx_command(content)
+        if okx_response:
+            return {"message": {"role": "assistant", "content": okx_response}}
+        
+        # Обработка символа
+        symbol = content.upper()
+        symbol = f"{symbol}USDT" if "USDT" not in symbol else symbol
+        
+        # Получаем данные с Binance
+        ticker = await fetch_ticker(symbol)
+        current_price = float(ticker.get("lastPrice", 0))
+        change_24h = float(ticker.get("priceChangePercent", 0))
+        volume_24h = float(ticker.get("quoteVolume", 0))
+        high_24h = float(ticker.get("highPrice", 0))
+        low_24h = float(ticker.get("lowPrice", 0))
+        
+        if current_price == 0:
+            return {"error": f"Invalid price for {symbol}"}
+        
+        klines = await fetch_klines(symbol)
+        closes = [k["close"] for k in klines]
+        volumes = [k["volume"] for k in klines]
+        
+        rsi = calculate_rsi(closes, 14)
+        ema20 = calculate_ema(closes[-20:], 20) if len(closes) >= 20 else closes[-1]
+        ema50 = calculate_ema(closes[-50:], 50) if len(closes) >= 50 else closes[-1]
+        avg_volume = sum(volumes[-20:]) / 20 if len(volumes) >= 20 else volumes[-1]
+        current_volume = volumes[-1] if volumes else 0
+        volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
+        high_low_range = (high_24h - low_24h) / low_24h if low_24h > 0 else 0
+        
+        macd, macd_signal, macd_hist = calculate_macd(closes)
+        bb_upper, bb_middle, bb_lower = calculate_bollinger_bands(closes)
+        rsi_divergence = detect_rsi_divergence(rsi, closes)
+        pivot = calculate_pivot_points(high_24h, low_24h, current_price)
+        
+        signal, signal_desc, long_score, short_score = get_signal_from_factors(
+            rsi, ema20, ema50, volume_ratio, high_low_range,
+            macd, macd_signal, macd_hist,
+            bb_upper, bb_middle, bb_lower,
+            rsi_divergence, pivot
+        )
+        
+        atr_proxy = high_low_range * current_price
+        support = low_24h
+        resistance = high_24h
+        
+        if signal == "LONG":
+            entry = support + (resistance - support) * 0.2
+            target = entry + (entry - support) * 2
+            stop = support - atr_proxy * 0.5
+            risk_reward = (target - entry) / (entry - stop) if entry > stop else 0
+        elif signal == "SHORT":
+            entry = resistance - (resistance - support) * 0.2
+            target = entry - (resistance - entry) * 2
+            stop = resistance + atr_proxy * 0.5
+            risk_reward = (entry - target) / (stop - entry) if stop > entry else 0
+        else:
+            entry = current_price
+            target = current_price * 1.05
+            stop = current_price * 0.95
+            risk_reward = 1.0
+        
+        total_score = long_score + short_score
+        if total_score >= 5:
+            conviction = "VERY HIGH"
+        elif total_score >= 4:
+            conviction = "HIGH"
+        elif total_score >= 3:
+            conviction = "MEDIUM"
+        else:
+            conviction = "LOW"
+        
+        result = f"""📊 CRYPTO SNAPSHOT PRO — {symbol.replace('USDT', '/USDT')}
+
+{signal_desc}
+📊 Conviction: {conviction}
+🎯 Score: {long_score} LONG / {short_score} SHORT
+💡 Reason: {'Bullish factors dominate.' if long_score > short_score else 'Bearish factors dominate.' if short_score > long_score else 'Mixed signals. Wait for confirmation.'}
+
+📈 TECHNICALS
+• Price: {format_price(current_price)} ({change_24h:+.2f}%)
+• RSI(14): {rsi:.1f} ({'oversold' if rsi < 30 else 'overbought' if rsi > 70 else 'neutral'})
+• EMA(20): {format_price(ema20)}
+• EMA(50): {format_price(ema50)}
+• Volume Ratio: {volume_ratio:.2f}x
+
+🎯 STRATEGY
+• Entry: {format_price(entry)}
+• Target: {format_price(target)}
+• Stop: {format_price(stop)}
+• Risk/Reward: 1:{risk_reward:.2f}
+
+📌 KEY LEVELS
+• Support: {format_price(support)}
+• Resistance: {format_price(resistance)}
+• 24h High: {format_price(high_24h)}
+• 24h Low: {format_price(low_24h)}
+"""
+        result += "\n\n⚠️ Risk Disclosure: This is NOT financial advice. Always manage risk. Past performance does not guarantee future results."
+        
+        return {"message": {"role": "assistant", "content": result}}
+        
+    except Exception as e:
+        return {"error": str(e)}
