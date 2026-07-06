@@ -4,10 +4,12 @@ Agent ID: #3613
 Service: Professional Multi-Factor Market Analysis ($0.25 per request)
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel
 import httpx
 import time
+import base64
+import json
 from typing import Optional
 
 app = FastAPI(title="Crypto Snapshot Pro x402 Agent")
@@ -25,6 +27,65 @@ class AgentRequest(BaseModel):
 
 class AgentResponse(BaseModel):
     message: dict
+
+
+# ============================================================
+# x402 PAYMENT CONFIGURATION
+# ============================================================
+PAYMENT_CONFIG = {
+    "x402Version": 2,
+    "resource": {
+        "url": "https://crypto-snapshot-pro.onrender.com",
+        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports 500+ Binance pairs (BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.03 per request.",
+        "mimeType": "application/json"
+    },
+    "accepts": [
+        {
+            "scheme": "exact",
+            "network": "eip155:8453",
+            "amount": "30000",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
+            "maxTimeoutSeconds": 300
+        }
+    ],
+    "extensions": {
+        "bazaar": {
+            "info": {
+                "input": {
+                    "type": "http",
+                    "method": "POST",
+                    "body": {},
+                    "bodyType": "json"
+                },
+                "output": {
+                    "type": "json",
+                    "example": {
+                        "message": {
+                            "role": "assistant",
+                            "content": "📊 CRYPTO SNAPSHOT PRO — BTC/USDT..."
+                        }
+                    }
+                }
+            },
+            "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object"
+            }
+        }
+    }
+}
+
+
+def create_402_response():
+    """Возвращает 402 Payment Required с заголовком payment-required"""
+    envelope = json.dumps(PAYMENT_CONFIG)
+    encoded = base64.b64encode(envelope.encode()).decode()
+    return Response(
+        content="Payment Required",
+        status_code=402,
+        headers={"payment-required": encoded}
+    )
 
 
 def calculate_rsi(closes: list[float], period: int = 14) -> float:
@@ -215,8 +276,12 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
 
 
 @app.post("/", response_model=AgentResponse)
-async def crypto_snapshot(request: AgentRequest):
-    content = request.message.get("content", "").strip()
+async def crypto_snapshot(request: Request, agent_request: AgentRequest):
+    # Проверяем x402-платеж
+    if not request.headers.get("authorization"):
+        return create_402_response()
+    
+    content = agent_request.message.get("content", "").strip()
     if not content:
         raise HTTPException(status_code=400, detail="Symbol is required")
     
