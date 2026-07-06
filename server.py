@@ -1,6 +1,6 @@
 """
-Crypto Snapshot Pro A2A Endpoint for OKX.AI Marketplace
-Agent ID: #3613 "Crypto Snapshot Pro"
+Crypto Snapshot Pro — x402 Agent for Agentic.Market
+Agent ID: #3613
 Service: Professional Multi-Factor Market Analysis ($0.25 per request)
 """
 
@@ -10,20 +10,20 @@ import httpx
 import time
 from typing import Optional
 
-app = FastAPI(title="Crypto Snapshot Pro A2A Endpoint")
+app = FastAPI(title="Crypto Snapshot Pro x402 Agent")
 
 BINANCE_API = "https://api.binance.com/api/v3"
 _cache = {}
 _CACHE_TTL = 10
 
 
-class A2ARequest(BaseModel):
+class AgentRequest(BaseModel):
     agentId: str
     message: dict
     metadata: Optional[dict] = {}
 
 
-class A2AResponse(BaseModel):
+class AgentResponse(BaseModel):
     message: dict
 
 
@@ -214,37 +214,12 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
         return klines
 
 
-def handle_okx_command(content: str) -> Optional[str]:
-    """Обработка OKX.AI команд для листинга"""
-    content_upper = content.upper()
-    
-    if "HELP" in content_upper or "PING" in content_upper or "HELLO" in content_upper:
-        return "✅ Agent #3613 (Crypto Snapshot Pro) is online.\n\nI provide real-time crypto market analysis with 8-factor scoring.\n\n📊 Supported: BTC, ETH, SOL, DOGE, ADA, XRP, AVAX, DOT, NEAR, MATIC, and 500+ others.\n\n💡 To get a signal, send a symbol (e.g., 'BTC').\n📋 For listing/resubmission, please use the OKX.AI interface."
-    
-    if "RESUBMIT" in content_upper or "LISTING" in content_upper or "LIST" in content_upper:
-        return "✅ Agent #3613 (Crypto Snapshot Pro) is ready for listing resubmission.\n\n📌 Agent details:\n• Name: Crypto Snapshot Pro\n• ID: 3613\n• Service: Real-time crypto technical analysis\n• Price: $0.25 per request\n• Endpoint: https://crypto-snapshot-pro.onrender.com\n\n✅ Agent is active and responding to requests.\n📋 Please proceed with the resubmission process in the OKX.AI interface."
-    
-    if "STATUS" in content_upper or "CHECK" in content_upper:
-        return "✅ Agent #3613 (Crypto Snapshot Pro) status:\n\n• Service: Online ✅\n• Uptime: Continuous\n• Response time: < 2 seconds\n• Binance API: Connected ✅\n• Cache: Active\n\n📊 Ready for requests. Send a symbol to test."
-    
-    if "DESCRIBE" in content_upper or "WHAT DO YOU DO" in content_upper:
-        return "🤖 Crypto Snapshot Pro — Agent #3613\n\n📈 Real-time crypto market analysis with 8-factor scoring:\n• RSI (momentum)\n• EMA Trend (20, 50)\n• MACD\n• Bollinger Bands\n• Volume Anomaly\n• RSI Divergence\n• ATR (volatility)\n• Pivot Points\n\n📊 Output: Signal (LONG/SHORT/HOLD), Conviction level, Entry/Target/Stop levels, Risk/Reward ratio.\n\n💰 Price: $0.25 per request"
-    
-    return None
-
-
-@app.post("/", response_model=A2AResponse)
-async def crypto_snapshot(request: A2ARequest):
+@app.post("/", response_model=AgentResponse)
+async def crypto_snapshot(request: AgentRequest):
     content = request.message.get("content", "").strip()
     if not content:
-        raise HTTPException(status_code=400, detail="Message content is required")
+        raise HTTPException(status_code=400, detail="Symbol is required")
     
-    # Проверка на OKX.AI команды
-    okx_response = handle_okx_command(content)
-    if okx_response:
-        return A2AResponse(message={"role": "assistant", "content": okx_response})
-    
-    # Обычная обработка символа
     symbol = content.upper()
     symbol = f"{symbol}USDT" if "USDT" not in symbol else symbol
 
@@ -340,7 +315,7 @@ async def crypto_snapshot(request: A2ARequest):
 • 24h Low: {format_price(low_24h)}
 """
         result += "\n\n⚠️ Risk Disclosure: This is NOT financial advice. Always manage risk. Past performance does not guarantee future results."
-        return A2AResponse(message={"role": "assistant", "content": result})
+        return AgentResponse(message={"role": "assistant", "content": result})
 
     except HTTPException:
         raise
@@ -356,131 +331,10 @@ async def health_check():
 @app.get("/")
 async def root():
     return {
-        "service": "Crypto Snapshot Pro A2A Endpoint",
+        "service": "Crypto Snapshot Pro x402 Agent",
         "agentId": "3613",
-        "version": "2.2.0",
+        "version": "3.0.0",
         "data_source": "Binance Public API",
         "supported_pairs": "All Binance spot pairs (BTCUSDT, ETHUSDT, SOLUSDT, etc.)",
-        "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "5-Factor Scoring"]
-    }
-
-
-# A2A-совместимый эндпоинт для OKX.AI
-@app.post("/a2a")
-async def a2a_handler(request: dict):
-    """
-    A2A-совместимый эндпоинт для OKX.AI
-    Обрабатывает запросы от Onchain OS и возвращает сигналы
-    """
-    try:
-        # Извлекаем символ из запроса
-        content = request.get("message", {}).get("content", "").strip()
-        if not content:
-            return {"error": "Symbol required"}
-        
-        # Проверка на OKX.AI команды
-        okx_response = handle_okx_command(content)
-        if okx_response:
-            return {"message": {"role": "assistant", "content": okx_response}}
-        
-        # Обработка символа
-        symbol = content.upper()
-        symbol = f"{symbol}USDT" if "USDT" not in symbol else symbol
-        
-        # Получаем данные с Binance
-        ticker = await fetch_ticker(symbol)
-        current_price = float(ticker.get("lastPrice", 0))
-        change_24h = float(ticker.get("priceChangePercent", 0))
-        volume_24h = float(ticker.get("quoteVolume", 0))
-        high_24h = float(ticker.get("highPrice", 0))
-        low_24h = float(ticker.get("lowPrice", 0))
-        
-        if current_price == 0:
-            return {"error": f"Invalid price for {symbol}"}
-        
-        klines = await fetch_klines(symbol)
-        closes = [k["close"] for k in klines]
-        volumes = [k["volume"] for k in klines]
-        
-        rsi = calculate_rsi(closes, 14)
-        ema20 = calculate_ema(closes[-20:], 20) if len(closes) >= 20 else closes[-1]
-        ema50 = calculate_ema(closes[-50:], 50) if len(closes) >= 50 else closes[-1]
-        avg_volume = sum(volumes[-20:]) / 20 if len(volumes) >= 20 else volumes[-1]
-        current_volume = volumes[-1] if volumes else 0
-        volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
-        high_low_range = (high_24h - low_24h) / low_24h if low_24h > 0 else 0
-        
-        macd, macd_signal, macd_hist = calculate_macd(closes)
-        bb_upper, bb_middle, bb_lower = calculate_bollinger_bands(closes)
-        rsi_divergence = detect_rsi_divergence(rsi, closes)
-        pivot = calculate_pivot_points(high_24h, low_24h, current_price)
-        
-        signal, signal_desc, long_score, short_score = get_signal_from_factors(
-            rsi, ema20, ema50, volume_ratio, high_low_range,
-            macd, macd_signal, macd_hist,
-            bb_upper, bb_middle, bb_lower,
-            rsi_divergence, pivot
-        )
-        
-        atr_proxy = high_low_range * current_price
-        support = low_24h
-        resistance = high_24h
-        
-        if signal == "LONG":
-            entry = support + (resistance - support) * 0.2
-            target = entry + (entry - support) * 2
-            stop = support - atr_proxy * 0.5
-            risk_reward = (target - entry) / (entry - stop) if entry > stop else 0
-        elif signal == "SHORT":
-            entry = resistance - (resistance - support) * 0.2
-            target = entry - (resistance - entry) * 2
-            stop = resistance + atr_proxy * 0.5
-            risk_reward = (entry - target) / (stop - entry) if stop > entry else 0
-        else:
-            entry = current_price
-            target = current_price * 1.05
-            stop = current_price * 0.95
-            risk_reward = 1.0
-        
-        total_score = long_score + short_score
-        if total_score >= 5:
-            conviction = "VERY HIGH"
-        elif total_score >= 4:
-            conviction = "HIGH"
-        elif total_score >= 3:
-            conviction = "MEDIUM"
-        else:
-            conviction = "LOW"
-        
-        result = f"""📊 CRYPTO SNAPSHOT PRO — {symbol.replace('USDT', '/USDT')}
-
-{signal_desc}
-📊 Conviction: {conviction}
-🎯 Score: {long_score} LONG / {short_score} SHORT
-💡 Reason: {'Bullish factors dominate.' if long_score > short_score else 'Bearish factors dominate.' if short_score > long_score else 'Mixed signals. Wait for confirmation.'}
-
-📈 TECHNICALS
-• Price: {format_price(current_price)} ({change_24h:+.2f}%)
-• RSI(14): {rsi:.1f} ({'oversold' if rsi < 30 else 'overbought' if rsi > 70 else 'neutral'})
-• EMA(20): {format_price(ema20)}
-• EMA(50): {format_price(ema50)}
-• Volume Ratio: {volume_ratio:.2f}x
-
-🎯 STRATEGY
-• Entry: {format_price(entry)}
-• Target: {format_price(target)}
-• Stop: {format_price(stop)}
-• Risk/Reward: 1:{risk_reward:.2f}
-
-📌 KEY LEVELS
-• Support: {format_price(support)}
-• Resistance: {format_price(resistance)}
-• 24h High: {format_price(high_24h)}
-• 24h Low: {format_price(low_24h)}
-"""
-        result += "\n\n⚠️ Risk Disclosure: This is NOT financial advice. Always manage risk. Past performance does not guarantee future results."
-        
-        return {"message": {"role": "assistant", "content": result}}
-        
-    except Exception as e:
-        return {"error": str(e)}
+        "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "5-Factor Scoring"],
+        "x402": True
