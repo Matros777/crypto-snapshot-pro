@@ -338,3 +338,4 @@ async def root():
         "supported_pairs": "All Binance spot pairs (BTCUSDT, ETHUSDT, SOLUSDT, etc.)",
         "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "5-Factor Scoring"],
         "x402": True
+    }
