@@ -10,7 +10,7 @@ import httpx
 import time
 import base64
 import json
-from typing import Optional
+from typing import Optional, Any
 
 app = FastAPI(title="Crypto Snapshot Pro x402 Agent")
 
@@ -275,15 +275,58 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
         return klines
 
 
+# ============================================================
+# PAYABLE ENDPOINT для проверки x402 на Agentic.Market
+# ============================================================
+@app.post("/payable")
+async def payable_endpoint(request: Request):
+    """Эндпоинт для проверки x402 на Agentic.Market"""
+    if not request.headers.get("authorization"):
+        return create_402_response()
+    
+    # Если есть авторизация, просто отвечаем OK
+    return {"status": "ok", "message": "Payment verified"}
+
+
+# ============================================================
+# ОСНОВНОЙ ЭНДПОИНТ (гибкий, без строгой валидации)
+# ============================================================
 @app.post("/", response_model=AgentResponse)
-async def crypto_snapshot(request: Request, agent_request: AgentRequest):
+async def crypto_snapshot(request: Request):
     # Проверяем x402-платеж
     if not request.headers.get("authorization"):
         return create_402_response()
     
-    content = agent_request.message.get("content", "").strip()
+    try:
+        body = await request.json()
+    except:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
+    # Гибкая обработка входящих данных
+    content = None
+    
+    # Вариант 1: стандартный формат Agentic.Market с agentId
+    if "message" in body and isinstance(body["message"], dict):
+        content = body["message"].get("content", "").strip()
+    
+    # Вариант 2: прямой символ в теле
+    elif isinstance(body, dict) and "symbol" in body:
+        content = body["symbol"].strip()
+    
+    # Вариант 3: просто текст в content
+    elif "content" in body:
+        content = body["content"].strip()
+    
+    # Вариант 4: если в message пришла строка
+    elif "message" in body and isinstance(body["message"], str):
+        content = body["message"].strip()
+    
+    # Если ничего не найдено
     if not content:
-        raise HTTPException(status_code=400, detail="Symbol is required")
+        return AgentResponse(message={
+            "role": "assistant",
+            "content": "📊 CRYPTO SNAPSHOT PRO\n\nSend a symbol to analyze.\n\nExamples:\n• BTC\n• ETH\n• SOL\n• DOGE\n• XRP\n\nUsage: {\"symbol\": \"BTC\"} or {\"message\": {\"content\": \"BTC\"}}"
+        })
     
     symbol = content.upper()
     symbol = f"{symbol}USDT" if "USDT" not in symbol else symbol
@@ -398,9 +441,15 @@ async def root():
     return {
         "service": "Crypto Snapshot Pro x402 Agent",
         "agentId": "3613",
-        "version": "3.0.0",
+        "version": "3.1.0",
         "data_source": "Binance Public API",
         "supported_pairs": "All Binance spot pairs (BTCUSDT, ETHUSDT, SOLUSDT, etc.)",
-        "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "5-Factor Scoring"],
-        "x402": True
+        "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "8-Factor Scoring"],
+        "x402": True,
+        "endpoints": {
+            "/": "Main endpoint (POST)",
+            "/payable": "x402 verification endpoint (POST)",
+            "/health": "Health check (GET)",
+            "/": "Service info (GET)"
+        }
     }
