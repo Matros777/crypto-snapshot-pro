@@ -22,13 +22,13 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 CONFIG + BAZAAR EXTENSION (ОБЯЗАТЕЛЬНО)
+# x402 CONFIG WITH BAZAAR EXTENSION
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com",
-        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level, Entry/Target/Stop. Price: $0.025 per request.",
+        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR Volatility, Pivot Points. Price: $0.025 per request.",
         "mimeType": "application/json"
     },
     "accepts": [
@@ -45,26 +45,10 @@ PAYMENT_CONFIG = {
     "extensions": {
         "bazaar": {
             "info": {
-                "input": {
-                    "type": "http",
-                    "method": "POST",
-                    "body": {},
-                    "bodyType": "json"
-                },
-                "output": {
-                    "type": "json",
-                    "example": {
-                        "message": {
-                            "role": "assistant",
-                            "content": "📊 CRYPTO SNAPSHOT PRO — BTC/USDT\n🚀 Strong Bullish Setup..."
-                        }
-                    }
-                }
+                "input": {"type": "http", "method": "POST", "body": {}, "bodyType": "json"},
+                "output": {"type": "json", "example": {"message": {"role": "assistant", "content": "..."}}}
             },
-            "schema": {
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "type": "object"
-            }
+            "schema": {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object"}
         }
     }
 }
@@ -80,25 +64,41 @@ def create_402_response():
     )
 
 
-def has_valid_payment(request: Request) -> bool:
-    h = request.headers
-    return bool(h.get("x-payment") or h.get("payment-signature") or h.get("authorization"))
+async def verify_payment_with_facilitator(payment_payload: str) -> bool:
+    """Verify payment through CDP Facilitator (Coinbase)"""
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                "https://api.cdp.coinbase.com/platform/v2/x402/verify",
+                json={"payment": payment_payload},
+                headers={"Content-Type": "application/json"}
+            )
+            return resp.status_code == 200
+    except Exception as e:
+        print(f"Facilitator verification failed: {e}")
+        return False
 
 
-# ====================== АНАЛИЗ ======================
+# ============================================================
+# 8-FACTOR TECHNICAL ANALYSIS
+# ============================================================
+
 def calculate_rsi(closes, period=14):
-    if len(closes) < period + 1: return 50.0
+    if len(closes) < period + 1:
+        return 50.0
     gains = [max(closes[i] - closes[i-1], 0) for i in range(1, len(closes))]
     losses = [max(closes[i-1] - closes[i], 0) for i in range(1, len(closes))]
     avg_gain = sum(gains[-period:]) / period
     avg_loss = sum(losses[-period:]) / period
-    if avg_loss == 0: return 100.0
+    if avg_loss == 0:
+        return 100.0
     rs = avg_gain / avg_loss
     return round(100 - (100 / (1 + rs)), 1)
 
 
 def calculate_ema(prices, period):
-    if not prices: return 0.0
+    if not prices:
+        return 0.0
     k = 2 / (period + 1)
     ema = prices[0]
     for p in prices[1:]:
@@ -107,19 +107,23 @@ def calculate_ema(prices, period):
 
 
 def calculate_bollinger_bands(closes, period=20, std=2):
-    if len(closes) < period: return 0,0,0
+    if len(closes) < period:
+        return 0, 0, 0
     recent = closes[-period:]
     mid = sum(recent) / period
-    variance = sum((x - mid)**2 for x in recent) / period
+    variance = sum((x - mid) ** 2 for x in recent) / period
     std_dev = variance ** 0.5
-    return round(mid + std*std_dev,2), round(mid,2), round(mid - std*std_dev,2)
+    return round(mid + std * std_dev, 2), round(mid, 2), round(mid - std * std_dev, 2)
 
 
 def detect_rsi_divergence(rsi, closes):
-    if len(closes) < 10: return 'none'
+    if len(closes) < 10:
+        return 'none'
     trend = closes[-1] - closes[-10]
-    if trend < 0 and rsi > 50: return 'bullish'
-    if trend > 0 and rsi < 50: return 'bearish'
+    if trend < 0 and rsi > 50:
+        return 'bullish'
+    if trend > 0 and rsi < 50:
+        return 'bearish'
     return 'none'
 
 
@@ -129,107 +133,181 @@ def calculate_pivot_points(high, low, close):
 
 
 def get_signal(rsi, ema20, ema50, vol_ratio, hl_range, bb_pos, rsi_div, price, pivot):
-    long = short = 0
-    if rsi < 30: long += 2
-    elif rsi > 70: short += 2
-    elif rsi < 40: long += 1
-    elif rsi > 60: short += 1
-    if ema20 > ema50: long += 1
-    else: short += 1
-    if bb_pos < 0.25: long += 1
-    elif bb_pos > 0.75: short += 1
-    if vol_ratio > 1.5:
-        if long > short: long += 1
-        else: short += 1
-    if rsi_div == 'bullish': long += 1
-    elif rsi_div == 'bearish': short += 1
-    if hl_range > 0.03:
-        if long > short: long += 1
-        else: short += 1
-    if price > pivot['pivot']: long += 0.5
-    else: short += 0.5
+    long_score = 0
+    short_score = 0
 
-    if long >= 5: return "LONG", "🚀 Strong Bullish Setup", long, short
-    if short >= 5: return "SHORT", "🔥 Strong Bearish Setup", long, short
-    if long > short: return "LONG", "⚡ Mild Bullish Bias", long, short
-    if short > long: return "SHORT", "⚠️ Mild Bearish Bias", long, short
-    return "HOLD", "➡️ Neutral — Wait for Setup", long, short
+    # 1. RSI
+    if rsi < 30:
+        long_score += 2
+    elif rsi > 70:
+        short_score += 2
+    elif rsi < 40:
+        long_score += 1
+    elif rsi > 60:
+        short_score += 1
+
+    # 2. EMA Trend
+    if ema20 > ema50:
+        long_score += 1
+    else:
+        short_score += 1
+
+    # 3. Bollinger Bands Position
+    if bb_pos < 0.25:
+        long_score += 1
+    elif bb_pos > 0.75:
+        short_score += 1
+
+    # 4. Volume Ratio
+    if vol_ratio > 1.5:
+        if long_score > short_score:
+            long_score += 1
+        else:
+            short_score += 1
+
+    # 5. RSI Divergence
+    if rsi_div == 'bullish':
+        long_score += 1
+    elif rsi_div == 'bearish':
+        short_score += 1
+
+    # 6. Volatility (ATR Proxy)
+    if hl_range > 0.03:
+        if long_score > short_score:
+            long_score += 1
+        else:
+            short_score += 1
+
+    # 7. Pivot Points
+    if price > pivot['pivot']:
+        long_score += 0.5
+    else:
+        short_score += 0.5
+
+    # Final Signal
+    if long_score >= 5:
+        return "LONG", "🚀 Strong Bullish Setup", long_score, short_score
+    if short_score >= 5:
+        return "SHORT", "🔥 Strong Bearish Setup", long_score, short_score
+    if long_score > short_score:
+        return "LONG", "⚡ Mild Bullish Bias", long_score, short_score
+    if short_score > long_score:
+        return "SHORT", "⚠️ Mild Bearish Bias", long_score, short_score
+    return "HOLD", "➡️ Neutral — Wait for Setup", long_score, short_score
 
 
 # ============================================================
-# MAIN
+# MAIN ENDPOINT
 # ============================================================
 @app.api_route("/", methods=["GET", "POST"])
 async def crypto_snapshot(request: Request):
-    if not has_valid_payment(request):
+    # Payment verification
+    payment_header = (
+        request.headers.get("x-payment") or 
+        request.headers.get("payment-signature") or 
+        request.headers.get("authorization")
+    )
+    
+    if not payment_header:
         return create_402_response()
 
+    if not await verify_payment_with_facilitator(payment_header):
+        raise HTTPException(status_code=402, detail="Payment verification failed by facilitator")
+
+    # Get symbol
     symbol = "ETH"
     if request.method == "POST":
         try:
             body = await request.json()
             symbol = body.get("symbol", symbol)
-        except: pass
+        except:
+            pass
     else:
         symbol = request.query_params.get("symbol", symbol)
 
     symbol = symbol.upper()
-    if "USDT" not in symbol: symbol += "USDT"
+    if "USDT" not in symbol:
+        symbol += "USDT"
 
     try:
-        t = (await httpx.AsyncClient().get(f"{BINANCE_API}/ticker/24hr", params={"symbol": symbol})).json()
-        price = float(t.get("lastPrice", 0))
-        change = float(t.get("priceChangePercent", 0))
-        high = float(t.get("highPrice", 0))
-        low = float(t.get("lowPrice", 0))
+        # Fetch market data
+        async with httpx.AsyncClient() as client:
+            ticker = await client.get(f"{BINANCE_API}/ticker/24hr", params={"symbol": symbol})
+            ticker = ticker.json()
+            
+            klines = await client.get(
+                f"{BINANCE_API}/klines",
+                params={"symbol": symbol, "interval": "1d", "limit": 50}
+            )
+            klines = klines.json()
 
-        kl = (await httpx.AsyncClient().get(f"{BINANCE_API}/klines", params={"symbol": symbol, "interval": "1d", "limit": 50})).json()
-        closes = [float(k[4]) for k in kl]
-        volumes = [float(k[5]) for k in kl]
+        price = float(ticker.get("lastPrice", 0))
+        change = float(ticker.get("priceChangePercent", 0))
+        high = float(ticker.get("highPrice", 0))
+        low = float(ticker.get("lowPrice", 0))
 
+        closes = [float(k[4]) for k in klines]
+        volumes = [float(k[5]) for k in klines]
+
+        # Calculate indicators
         rsi = calculate_rsi(closes)
         ema20 = calculate_ema(closes[-20:], 20)
         ema50 = calculate_ema(closes[-50:], 50)
-        vol_ratio = volumes[-1] / (sum(volumes[-20:])/20) if len(volumes) >= 20 else 1.0
+        vol_ratio = volumes[-1] / (sum(volumes[-20:]) / 20) if len(volumes) >= 20 else 1.0
         hl_range = (high - low) / low if low > 0 else 0
         bb_u, bb_m, bb_l = calculate_bollinger_bands(closes)
         bb_pos = (bb_m - bb_l) / (bb_u - bb_l) if bb_u != bb_l else 0.5
         rsi_div = detect_rsi_divergence(rsi, closes)
         pivot = calculate_pivot_points(high, low, price)
 
-        signal, desc, ls, ss = get_signal(rsi, ema20, ema50, vol_ratio, hl_range, bb_pos, rsi_div, price, pivot)
+        # Generate signal
+        signal, desc, long_score, short_score = get_signal(
+            rsi, ema20, ema50, vol_ratio, hl_range, bb_pos, rsi_div, price, pivot
+        )
 
+        # Conviction level
+        total_score = long_score + short_score
+        if total_score >= 6:
+            conviction = "VERY HIGH"
+        elif total_score >= 4:
+            conviction = "HIGH"
+        elif total_score >= 3:
+            conviction = "MEDIUM"
+        else:
+            conviction = "LOW"
+
+        # Build response
         result = f"""
 ╔══════════════════════════════════════════════════════════════╗
 ║ 📊 CRYPTO SNAPSHOT PRO — {symbol.replace('USDT', '/USDT')} ║
 ╚══════════════════════════════════════════════════════════════╝
 
-📌 ТОРГОВЫЙ СИГНАЛ
+📌 TRADING SIGNAL
 ─────────────────────────────────────────────────────────────
-  Направление: {signal}
-  Убеждённость: HIGH
-  Счёт: {ls:.1f} LONG / {ss:.1f} SHORT
+  Direction: {signal}
+  Conviction: {conviction}
+  Score: {long_score:.1f} LONG / {short_score:.1f} SHORT
 
-📈 ТЕХНИЧЕСКИЙ АНАЛИЗ
+📈 TECHNICAL ANALYSIS
 ─────────────────────────────────────────────────────────────
-  Цена: ${price:,.2f} ({change:+.2f}%)
-  RSI (14): {rsi:.1f}
+  Price: ${price:,.2f} ({change:+.2f}%)
+  RSI (14): {rsi:.1f} ({'oversold' if rsi < 30 else 'overbought' if rsi > 70 else 'neutral'})
   EMA (20): ${ema20:,.2f}
   EMA (50): ${ema50:,.2f}
+  EMA Trend: {'🟢 BULLISH' if ema20 > ema50 else '🔴 BEARISH'}
 
-📊 ОБЪЁМ И ВОЛАТИЛЬНОСТЬ
+📊 VOLUME & VOLATILITY
 ─────────────────────────────────────────────────────────────
   Volume Ratio: {vol_ratio:.2f}x
-  BB Position: {bb_pos:.2f}
+  BB Position: {bb_pos:.2f} ({'overbought' if bb_pos > 0.7 else 'oversold' if bb_pos < 0.3 else 'neutral'})
   Pivot Point: ${pivot['pivot']:,.2f}
 
-🎯 ТОРГОВАЯ СТРАТЕГИЯ
+🎯 TRADING STRATEGY
 ─────────────────────────────────────────────────────────────
-  {'🟢 RSI ДИВЕРГЕНЦИЯ: ' + rsi_div.upper() if rsi_div != 'none' else 'Дивергенция: отсутствует'}
+  {'🟢 RSI DIVERGENCE: ' + rsi_div.upper() if rsi_div != 'none' else 'No divergence detected'}
 
-⚠️ Risk Disclosure: This is NOT financial advice. Always manage risk.
+⚠️ DISCLAIMER: This is NOT financial advice. Trade at your own risk.
 """
-
         return AgentResponse(message={"role": "assistant", "content": result.strip()})
 
     except Exception as e:
@@ -238,9 +316,30 @@ async def crypto_snapshot(request: Request):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "service": "Crypto Snapshot Pro x402 Agent"}
 
 
 @app.get("/")
 async def root():
-    return {"service": "Crypto Snapshot Pro x402 Agent", "x402": True, "agentId": "3613"}
+    return {
+        "service": "Crypto Snapshot Pro x402 Agent",
+        "agentId": "3613",
+        "version": "3.2.0",
+        "x402": True,
+        "price": "0.025 USDC per request",
+        "network": "Base",
+        "features": [
+            "RSI (14)",
+            "EMA (20/50)",
+            "Volume Ratio",
+            "Bollinger Bands",
+            "RSI Divergence",
+            "ATR Volatility",
+            "Pivot Points",
+            "8-Factor Scoring System"
+        ],
+        "endpoints": {
+            "/": "Main endpoint (POST/GET)",
+            "/health": "Health check (GET)"
+        }
+    }
