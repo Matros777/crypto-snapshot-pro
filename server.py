@@ -31,7 +31,10 @@ BINANCE_API = "https://api.binance.com/api/v3"
 _cache = {}
 _CACHE_TTL = 10
 
-FACILITATOR_URL = "https://x402.org/facilitator"
+# ============================================================
+# ИСПРАВЛЕННЫЙ ФАСИЛИТАТОР — COINBASE CDP
+# ============================================================
+FACILITATOR_URL = "https://api.cdp.coinbase.com/platform/v2/x402"
 
 
 class AgentResponse(BaseModel):
@@ -103,7 +106,7 @@ def create_402_response():
 
 
 async def facilitator_verify(payment_payload: str) -> bool:
-    """Проверка платежа через фасилитатор"""
+    """Проверка платежа через Coinbase CDP фасилитатор"""
     logger.info("VERIFY PAYMENT START")
     try:
         async with httpx.AsyncClient(timeout=20) as client:
