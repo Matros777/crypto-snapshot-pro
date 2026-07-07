@@ -50,6 +50,12 @@ PAYMENT_CONFIG = {
             "maxTimeoutSeconds": 300
         }
     ],
+    "domain": {
+        "name": "Crypto Snapshot Pro",
+        "version": "1.0.0",
+        "chainId": 8453,
+        "verifyingContract": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3"
+    },
     "extensions": {
         "bazaar": {
             "info": {
@@ -77,28 +83,10 @@ PAYMENT_CONFIG = {
     }
 }
 
-# Добавляем domain отдельно для EIP-712
-EIP712_DOMAIN = {
-    "name": "Crypto Snapshot Pro",
-    "version": "1.0.0",
-    "chainId": 8453,
-    "verifyingContract": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3"
-}
-
 
 def create_402_response():
     """Возвращает 402 Payment Required с правильным заголовком"""
-    # Добавляем domain в каждый accept
-    config = PAYMENT_CONFIG.copy()
-    config["accepts"] = [
-        {
-            **accept,
-            "domain": EIP712_DOMAIN
-        }
-        for accept in config["accepts"]
-    ]
-    
-    envelope = json.dumps(config)
+    envelope = json.dumps(PAYMENT_CONFIG)
     encoded = base64.b64encode(envelope.encode()).decode()
     
     return Response(
