@@ -10,20 +10,25 @@ import httpx
 import time
 import base64
 import json
-import os
-from typing import Optional, Any
+from typing import Optional
+import logging
+import sys
+
+# ============================================================
+# НАСТРОЙКА ЛОГИРОВАНИЯ
+# ============================================================
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger("crypto-snapshot")
 
 app = FastAPI(title="Crypto Snapshot Pro x402 Agent")
 
 BINANCE_API = "https://api.binance.com/api/v3"
 _cache = {}
-_CACHE_TTL = 10
-
-
-class AgentRequest(BaseModel):
-    agentId: str
-    message: dict
-    metadata: Optional[dict] = {}
+_CACHE_TTL = 30
 
 
 class AgentResponse(BaseModel):
@@ -31,13 +36,13 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION — ИСПРАВЛЕННЫЙ (EXTRA + BAZAAR)
+# x402 PAYMENT CONFIGURATION
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com",
-        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports 500+ Binance pairs (BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
+        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Price: $0.025 per request.",
         "mimeType": "application/json"
     },
     "accepts": [
@@ -57,42 +62,29 @@ PAYMENT_CONFIG = {
     "extensions": {
         "bazaar": {
             "info": {
-                "input": {
-                    "type": "http",
-                    "method": "POST",
-                    "body": {},
-                    "bodyType": "json"
-                },
-                "output": {
-                    "type": "json",
-                    "example": {
-                        "message": {
-                            "role": "assistant",
-                            "content": "📊 CRYPTO SNAPSHOT PRO — BTC/USDT..."
-                        }
-                    }
-                }
+                "input": {"type": "http", "method": "POST", "body": {}, "bodyType": "json"},
+                "output": {"type": "json", "example": {"message": {"role": "assistant", "content": "..."}}}
             },
-            "schema": {
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "type": "object"
-            }
+            "schema": {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object"}
         }
     }
 }
 
 
 def create_402_response():
-    """Возвращает 402 Payment Required с правильным заголовком"""
     envelope = json.dumps(PAYMENT_CONFIG)
-    encoded = base64.b64encode(envelope.encode()).decode()
-    
+    encoded = base64.b64encode(envelope.encode("utf-8")).decode("utf-8")
+    logger.info("🔐 402 Payment Required response generated")
     return Response(
         content="Payment Required",
         status_code=402,
         headers={"payment-required": encoded}
     )
 
+
+# ============================================================
+# 8-ФАКТОРНЫЙ АНАЛИЗ
+# ============================================================
 
 def calculate_rsi(closes: list[float], period: int = 14) -> float:
     if len(closes) < period + 1:
@@ -244,15 +236,20 @@ async def fetch_ticker(symbol: str) -> dict:
     cache_key = f"ticker_{symbol}"
     now = time.time()
     if cache_key in _cache and now - _cache[cache_key]["time"] < _CACHE_TTL:
+        logger.debug(f"📦 Cache hit for ticker {symbol}")
         return _cache[cache_key]["data"]
     async with httpx.AsyncClient(timeout=10.0) as client:
+        logger.info(f"🌐 Fetching ticker for {symbol} from Binance")
         response = await client.get(f"{BINANCE_API}/ticker/24hr", params={"symbol": symbol})
         if response.status_code != 200:
+            logger.error(f"❌ Binance API error for {symbol}: {response.text}")
             raise HTTPException(status_code=400, detail=f"Binance API error: {response.text}")
         data = response.json()
         if not data or "lastPrice" not in data:
+            logger.error(f"❌ Symbol {symbol} not found on Binance")
             raise HTTPException(status_code=400, detail=f"Symbol {symbol} not found on Binance")
         _cache[cache_key] = {"data": data, "time": now}
+        logger.debug(f"✅ Ticker data fetched for {symbol}")
         return data
 
 
@@ -260,12 +257,15 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
     cache_key = f"kline_{symbol}_{interval}_{limit}"
     now = time.time()
     if cache_key in _cache and now - _cache[cache_key]["time"] < _CACHE_TTL:
+        logger.debug(f"📦 Cache hit for klines {symbol}")
         return _cache[cache_key]["data"]
     async with httpx.AsyncClient(timeout=10.0) as client:
+        logger.info(f"🌐 Fetching klines for {symbol} from Binance")
         response = await client.get(f"{BINANCE_API}/klines", params={
             "symbol": symbol, "interval": interval, "limit": limit
         })
         if response.status_code != 200:
+            logger.error(f"❌ Binance API error for klines {symbol}: {response.text}")
             raise HTTPException(status_code=400, detail=f"Binance API error: {response.text}")
         data = response.json()
         klines = []
@@ -278,69 +278,90 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
                 "time": k[0]
             })
         _cache[cache_key] = {"data": klines, "time": now}
+        logger.debug(f"✅ Klines data fetched for {symbol}")
         return klines
 
 
 # ============================================================
-# PAYABLE ENDPOINT
-# ============================================================
-@app.post("/payable")
-async def payable_endpoint(request: Request):
-    if not request.headers.get("authorization"):
-        return create_402_response()
-    return {"status": "ok", "message": "Payment verified"}
-
-
-# ============================================================
-# ОСНОВНОЙ ЭНДПОИНТ
+# ОСНОВНОЙ ЭНДПОИНТ С ДЕТАЛЬНЫМ ЛОГИРОВАНИЕМ
 # ============================================================
 @app.api_route("/", methods=["GET", "POST"])
 async def crypto_snapshot(request: Request):
-    if not request.headers.get("authorization"):
-        return create_402_response()
+    logger.info("=" * 80)
+    logger.info("📨 NEW REQUEST RECEIVED")
+    logger.info(f"📍 Method: {request.method}")
+    logger.info(f"📍 URL: {request.url}")
     
-    symbol = None
+    # Логируем все заголовки
+    logger.info("📋 REQUEST HEADERS:")
+    for key, value in request.headers.items():
+        logger.info(f"  {key}: {value}")
     
+    # Логируем тело запроса для POST
+    body = None
     if request.method == "POST":
         try:
             body = await request.json()
+            logger.info(f"📦 REQUEST BODY: {json.dumps(body, indent=2)}")
         except:
-            raise HTTPException(status_code=400, detail="Invalid JSON body")
-        
-        if "message" in body and isinstance(body["message"], dict):
-            symbol = body["message"].get("content", "").strip()
-        elif isinstance(body, dict) and "symbol" in body:
-            symbol = body["symbol"].strip()
-        elif "content" in body:
-            symbol = body["content"].strip()
-        elif "message" in body and isinstance(body["message"], str):
-            symbol = body["message"].strip()
-    else:
-        symbol = request.query_params.get("symbol", "ETH")
+            logger.warning("⚠️ Could not parse request body as JSON")
     
-    if not symbol:
-        return AgentResponse(message={
-            "role": "assistant",
-            "content": "📊 CRYPTO SNAPSHOT PRO\n\nSend a symbol to analyze.\n\nExamples:\n• BTC\n• ETH\n• SOL\n• DOGE\n• XRP\n\nUsage: POST {\"symbol\": \"BTC\"} or GET ?symbol=BTC"
-        })
+    # Проверка платежа
+    h = request.headers
+    has_payment = bool(
+        h.get("authorization") or 
+        h.get("x-payment") or 
+        h.get("payment-signature") or
+        h.get("x-payment-signature") or
+        h.get("authorization", "").startswith("Bearer")
+    )
+    logger.info(f"🔑 Payment check result: {has_payment}")
+    logger.info(f"  - authorization: {h.get('authorization', 'MISSING')}")
+    logger.info(f"  - x-payment: {h.get('x-payment', 'MISSING')}")
+    logger.info(f"  - payment-signature: {h.get('payment-signature', 'MISSING')}")
+    logger.info(f"  - x-payment-signature: {h.get('x-payment-signature', 'MISSING')}")
+    
+    if not has_payment:
+        logger.warning("🚫 No payment detected — returning 402")
+        return create_402_response()
+    
+    logger.info("✅ Payment detected — processing request")
+    
+    # Определяем символ
+    symbol = "ETH"
+    if request.method == "POST" and body:
+        symbol = body.get("symbol", symbol)
+    else:
+        symbol = request.query_params.get("symbol", symbol)
+    
+    logger.info(f"📊 Symbol requested: {symbol}")
     
     symbol = symbol.upper()
-    symbol = f"{symbol}USDT" if "USDT" not in symbol else symbol
+    if "USDT" not in symbol:
+        symbol += "USDT"
+    
+    logger.info(f"🔄 Normalized symbol: {symbol}")
 
     try:
+        logger.info("⏳ Fetching market data...")
         ticker = await fetch_ticker(symbol)
         current_price = float(ticker.get("lastPrice", 0))
         change_24h = float(ticker.get("priceChangePercent", 0))
         high_24h = float(ticker.get("highPrice", 0))
         low_24h = float(ticker.get("lowPrice", 0))
+        logger.info(f"📈 Price: {current_price}, Change: {change_24h}%")
 
         if current_price == 0:
+            logger.error(f"❌ Invalid price for {symbol}")
             raise HTTPException(status_code=400, detail=f"Invalid price for {symbol}")
 
         klines = await fetch_klines(symbol)
         closes = [k["close"] for k in klines]
         volumes = [k["volume"] for k in klines]
+        logger.info(f"📊 Data points: {len(closes)} closes, {len(volumes)} volumes")
 
+        # Расчет индикаторов
+        logger.info("🧮 Calculating indicators...")
         rsi = calculate_rsi(closes, 14)
         ema20 = calculate_ema(closes[-20:], 20) if len(closes) >= 20 else closes[-1]
         ema50 = calculate_ema(closes[-50:], 50) if len(closes) >= 50 else closes[-1]
@@ -354,12 +375,17 @@ async def crypto_snapshot(request: Request):
         rsi_divergence = detect_rsi_divergence(rsi, closes)
         pivot = calculate_pivot_points(high_24h, low_24h, current_price)
 
+        logger.info(f"📊 RSI: {rsi:.1f}, EMA20: {ema20:.2f}, EMA50: {ema50:.2f}")
+        logger.info(f"📊 Volume Ratio: {volume_ratio:.2f}, BB Position: {(bb_middle - bb_lower) / (bb_upper - bb_lower) if bb_upper != bb_lower else 0.5:.2f}")
+
         signal, signal_desc, long_score, short_score = get_signal_from_factors(
             rsi, ema20, ema50, volume_ratio, high_low_range,
             macd, macd_signal, macd_hist,
             bb_upper, bb_middle, bb_lower,
             rsi_divergence, pivot
         )
+
+        logger.info(f"🎯 Signal: {signal} (LONG: {long_score}, SHORT: {short_score})")
 
         atr_proxy = high_low_range * current_price
         support = low_24h
@@ -419,21 +445,26 @@ async def crypto_snapshot(request: Request):
 """
         result += "\n\n⚠️ Risk Disclosure: This is NOT financial advice. Always manage risk. Past performance does not guarantee future results."
         
+        logger.info("✅ Response generated successfully")
+        logger.info("=" * 80)
         return AgentResponse(message={"role": "assistant", "content": result})
 
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"❌ Internal error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
 @app.get("/health")
 async def health_check():
+    logger.info("❤️ Health check")
     return {"status": "ok", "service": "crypto-snapshot-pro"}
 
 
 @app.get("/")
 async def root():
+    logger.info("🏠 Root endpoint called")
     return {
         "service": "Crypto Snapshot Pro x402 Agent",
         "agentId": "3613",
