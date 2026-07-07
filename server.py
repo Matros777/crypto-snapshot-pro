@@ -22,13 +22,13 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 CONFIG
+# x402 CONFIG + BAZAAR EXTENSION (ОБЯЗАТЕЛЬНО)
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com",
-        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Price: $0.025 per request.",
+        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level, Entry/Target/Stop. Price: $0.025 per request.",
         "mimeType": "application/json"
     },
     "accepts": [
@@ -41,7 +41,32 @@ PAYMENT_CONFIG = {
             "maxTimeoutSeconds": 300,
             "extra": {"name": "USD Coin", "version": "2"}
         }
-    ]
+    ],
+    "extensions": {
+        "bazaar": {
+            "info": {
+                "input": {
+                    "type": "http",
+                    "method": "POST",
+                    "body": {},
+                    "bodyType": "json"
+                },
+                "output": {
+                    "type": "json",
+                    "example": {
+                        "message": {
+                            "role": "assistant",
+                            "content": "📊 CRYPTO SNAPSHOT PRO — BTC/USDT\n🚀 Strong Bullish Setup..."
+                        }
+                    }
+                }
+            },
+            "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object"
+            }
+        }
+    }
 }
 
 
@@ -60,7 +85,7 @@ def has_valid_payment(request: Request) -> bool:
     return bool(h.get("x-payment") or h.get("payment-signature") or h.get("authorization"))
 
 
-# ====================== 8 ИНДИКАТОРОВ ======================
+# ====================== АНАЛИЗ ======================
 def calculate_rsi(closes, period=14):
     if len(closes) < period + 1: return 50.0
     gains = [max(closes[i] - closes[i-1], 0) for i in range(1, len(closes))]
@@ -132,7 +157,7 @@ def get_signal(rsi, ema20, ema50, vol_ratio, hl_range, bb_pos, rsi_div, price, p
 
 
 # ============================================================
-# MAIN ENDPOINT
+# MAIN
 # ============================================================
 @app.api_route("/", methods=["GET", "POST"])
 async def crypto_snapshot(request: Request):
@@ -174,7 +199,6 @@ async def crypto_snapshot(request: Request):
 
         signal, desc, ls, ss = get_signal(rsi, ema20, ema50, vol_ratio, hl_range, bb_pos, rsi_div, price, pivot)
 
-        # ==================== СТРУКТУРИРОВАННЫЙ ВЫВОД ====================
         result = f"""
 ╔══════════════════════════════════════════════════════════════╗
 ║ 📊 CRYPTO SNAPSHOT PRO — {symbol.replace('USDT', '/USDT')} ║
@@ -189,34 +213,23 @@ async def crypto_snapshot(request: Request):
 📈 ТЕХНИЧЕСКИЙ АНАЛИЗ
 ─────────────────────────────────────────────────────────────
   Цена: ${price:,.2f} ({change:+.2f}%)
-  RSI (14): {rsi:.1f} ({'oversold' if rsi < 30 else 'overbought' if rsi > 70 else 'neutral'})
+  RSI (14): {rsi:.1f}
   EMA (20): ${ema20:,.2f}
   EMA (50): ${ema50:,.2f}
-  Тренд EMA: {'🟢 BULLISH' if ema20 > ema50 else '🔴 BEARISH'}
 
 📊 ОБЪЁМ И ВОЛАТИЛЬНОСТЬ
 ─────────────────────────────────────────────────────────────
   Volume Ratio: {vol_ratio:.2f}x
-  BB Position: {bb_pos:.2f} ({'перекупленность' if bb_pos > 0.7 else 'перепроданность' if bb_pos < 0.3 else 'нейтрально'})
+  BB Position: {bb_pos:.2f}
   Pivot Point: ${pivot['pivot']:,.2f}
 
 🎯 ТОРГОВАЯ СТРАТЕГИЯ
 ─────────────────────────────────────────────────────────────
-  {'🟢 ДИВЕРГЕНЦИЯ: ' + rsi_div.upper() if rsi_div != 'none' else 'Дивергенция: отсутствует'}
+  {'🟢 RSI ДИВЕРГЕНЦИЯ: ' + rsi_div.upper() if rsi_div != 'none' else 'Дивергенция: отсутствует'}
 
-⚠️ УПРАВЛЕНИЕ РИСКАМИ
-─────────────────────────────────────────────────────────────
-  Вход: ${price:,.2f}
-  Цель: ${price * 1.05:,.2f}
-  Стоп-лосс: ${price * 0.95:,.2f}
-  Risk/Reward: 1:1.00
-
-{'🚀 СИЛЬНЫЙ БЫЧИЙ СИГНАЛ' if signal == 'LONG' else ''}
-{'🔻 СИЛЬНЫЙ МЕДВЕЖИЙ СИГНАЛ' if signal == 'SHORT' else ''}
-{'📌 НЕЙТРАЛЬНО — ЖДЁМ ПОДТВЕРЖДЕНИЯ' if signal == 'HOLD' else ''}
-
-⚠️ ДИСКЛЕЙМЕР: Это не финансовый совет. Торгуйте с осторожностью.
+⚠️ Risk Disclosure: This is NOT financial advice. Always manage risk.
 """
+
         return AgentResponse(message={"role": "assistant", "content": result.strip()})
 
     except Exception as e:
