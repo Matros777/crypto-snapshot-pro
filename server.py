@@ -6,13 +6,15 @@ Service: Professional Multi-Factor Market Analysis ($0.025 per request)
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 import httpx
 import time
 import base64
 import json
+import os
 import logging
 import sys
-from typing import Optional
+from typing import Optional, Any
 
 # ============================================================
 # ЛОГИРОВАНИЕ
@@ -28,17 +30,29 @@ app = FastAPI(title="Crypto Snapshot Pro x402 Agent")
 
 BINANCE_API = "https://api.binance.com/api/v3"
 _cache = {}
-_CACHE_TTL = 30
+_CACHE_TTL = 10
+
 FACILITATOR_URL = "https://x402.org/facilitator"
 
+
+class AgentRequest(BaseModel):
+    agentId: str
+    message: dict
+    metadata: Optional[dict] = {}
+
+
+class AgentResponse(BaseModel):
+    message: dict
+
+
 # ============================================================
-# X402 PAYMENT CONFIGURATION
+# x402 PAYMENT CONFIGURATION
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
-        "url": "https://crypto-snapshot-pro.onrender.com/",
-        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Price: $0.025 per request.",
+        "url": "https://crypto-snapshot-pro.onrender.com",
+        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports 500+ Binance pairs (BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
         "mimeType": "application/json"
     },
     "accepts": [
@@ -48,13 +62,15 @@ PAYMENT_CONFIG = {
             "amount": "25000",
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
-            "maxTimeoutSeconds": 300,
-            "extra": {
-                "name": "USD Coin",
-                "version": "2"
-            }
+            "maxTimeoutSeconds": 300
         }
     ],
+    "domain": {
+        "name": "Crypto Snapshot Pro",
+        "version": "1.0.0",
+        "chainId": 8453,
+        "verifyingContract": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3"
+    },
     "extensions": {
         "bazaar": {
             "info": {
@@ -84,10 +100,10 @@ PAYMENT_CONFIG = {
 
 
 def create_402_response():
-    """Возвращает 402 Payment Required с заголовком payment-required (v2 spec)"""
+    """Возвращает 402 Payment Required с заголовком payment-required"""
     envelope = json.dumps(PAYMENT_CONFIG)
-    encoded = base64.b64encode(envelope.encode("utf-8")).decode("utf-8")
-    logger.info("🔐 402 Payment Required (header)")
+    encoded = base64.b64encode(envelope.encode()).decode()
+    logger.info("🔐 402 Payment Required sent")
     return Response(
         content="Payment Required",
         status_code=402,
@@ -311,51 +327,72 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
 
 
 # ============================================================
-# ОСНОВНОЙ ЭНДПОИНТ — ПОДДЕРЖИВАЕТ GET И POST
+# PAYABLE ENDPOINT
 # ============================================================
-@app.api_route("/", methods=["GET", "POST"])
-async def crypto_snapshot(request: Request):
-    logger.info("=" * 80)
-    logger.info(f"📨 NEW REQUEST — Method: {request.method}")
-
-    # 1. Проверяем платежный заголовок
+@app.post("/payable")
+async def payable_endpoint(request: Request):
     payment = request.headers.get("x-payment") or request.headers.get("payment-signature")
-    logger.info(f"PAYMENT HEADER: {bool(payment)}")
-
     if not payment:
-        logger.warning("🚫 No payment detected — returning 402")
         return create_402_response()
-
-    # 2. Валидируем через фасилитатор
+    
     valid = await facilitator_verify(payment)
     if not valid:
-        logger.error("❌ PAYMENT INVALID")
         return JSONResponse(
             {"error": "Payment verification failed"},
             status_code=402
         )
+    
+    return {"status": "ok", "message": "Payment verified"}
 
-    logger.info("✅ PAYMENT ACCEPTED")
 
-    # 3. Определяем символ
-    symbol = "ETH"
+# ============================================================
+# ОСНОВНОЙ ЭНДПОИНТ
+# ============================================================
+@app.api_route("/", methods=["GET", "POST"])
+async def crypto_snapshot(request: Request):
+    # Проверяем платеж через фасилитатор
+    payment = request.headers.get("x-payment") or request.headers.get("payment-signature")
+    
+    if not payment:
+        return create_402_response()
+    
+    valid = await facilitator_verify(payment)
+    if not valid:
+        return JSONResponse(
+            {"error": "Payment verification failed"},
+            status_code=402
+        )
+    
+    # Определяем символ
+    symbol = None
+    
     if request.method == "POST":
         try:
             body = await request.json()
-            symbol = body.get("symbol", symbol)
         except:
-            pass
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+        
+        if "message" in body and isinstance(body["message"], dict):
+            symbol = body["message"].get("content", "").strip()
+        elif isinstance(body, dict) and "symbol" in body:
+            symbol = body["symbol"].strip()
+        elif "content" in body:
+            symbol = body["content"].strip()
+        elif "message" in body and isinstance(body["message"], str):
+            symbol = body["message"].strip()
     else:
-        symbol = request.query_params.get("symbol", symbol)
-
-    logger.info(f"📊 Symbol requested: {symbol}")
-
+        symbol = request.query_params.get("symbol", "ETH")
+    
+    if not symbol:
+        return AgentResponse(message={
+            "role": "assistant",
+            "content": "📊 CRYPTO SNAPSHOT PRO\n\nSend a symbol to analyze.\n\nExamples:\n• BTC\n• ETH\n• SOL\n• DOGE\n• XRP\n\nUsage: POST {\"symbol\": \"BTC\"} or GET ?symbol=BTC"
+        })
+    
     symbol = symbol.upper()
-    if "USDT" not in symbol:
-        symbol += "USDT"
+    symbol = f"{symbol}USDT" if "USDT" not in symbol else symbol
 
     try:
-        # Получаем данные
         ticker = await fetch_ticker(symbol)
         current_price = float(ticker.get("lastPrice", 0))
         change_24h = float(ticker.get("priceChangePercent", 0))
@@ -369,7 +406,6 @@ async def crypto_snapshot(request: Request):
         closes = [k["close"] for k in klines]
         volumes = [k["volume"] for k in klines]
 
-        # Рассчёт индикаторов
         rsi = calculate_rsi(closes, 14)
         ema20 = calculate_ema(closes[-20:], 20) if len(closes) >= 20 else closes[-1]
         ema50 = calculate_ema(closes[-50:], 50) if len(closes) >= 50 else closes[-1]
@@ -447,43 +483,34 @@ async def crypto_snapshot(request: Request):
 • 24h Low: {format_price(low_24h)}
 """
         result += "\n\n⚠️ Risk Disclosure: This is NOT financial advice. Always manage risk. Past performance does not guarantee future results."
-
-        return {"message": {"role": "assistant", "content": result}}
+        
+        return AgentResponse(message={"role": "assistant", "content": result})
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error: {e}")
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
 @app.get("/health")
-async def health():
+async def health_check():
     return {"status": "ok", "service": "crypto-snapshot-pro"}
 
 
-@app.get("/info")
-async def info():
+@app.get("/")
+async def root():
     return {
         "service": "Crypto Snapshot Pro x402 Agent",
-        "agentId": 3613,
+        "agentId": "3613",
         "version": "3.2.0",
+        "data_source": "Binance Public API",
+        "supported_pairs": "All Binance spot pairs (BTCUSDT, ETHUSDT, SOLUSDT, etc.)",
+        "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "8-Factor Scoring"],
         "x402": True,
-        "price": "0.025 USDC per request",
-        "network": "Base",
-        "features": [
-            "RSI (14)",
-            "EMA (20/50)",
-            "Volume Ratio",
-            "Bollinger Bands",
-            "RSI Divergence",
-            "ATR Volatility",
-            "Pivot Points",
-            "8-Factor Scoring System"
-        ],
+        "settle": "CDP Facilitator",
         "endpoints": {
             "/": "Main endpoint (POST/GET)",
+            "/payable": "x402 verification endpoint (POST)",
             "/health": "Health check (GET)",
-            "/info": "Service info (GET)"
         }
     }
