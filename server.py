@@ -5,6 +5,7 @@ Service: Professional Multi-Factor Market Analysis ($0.025 per request)
 """
 
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import httpx
 import time
@@ -31,14 +32,19 @@ _cache = {}
 _CACHE_TTL = 30
 FACILITATOR_URL = "https://x402.org/facilitator"
 
+
+class AgentResponse(BaseModel):
+    message: dict
+
+
 # ============================================================
-# X402 CONFIG
+# X402 PAYMENT CONFIGURATION
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com/",
-        "description": "Real-time crypto market analysis using 8-factor scoring. Price: $0.025 per request.",
+        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Price: $0.025 per request.",
         "mimeType": "application/json"
     },
     "accepts": [
@@ -49,23 +55,54 @@ PAYMENT_CONFIG = {
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
             "maxTimeoutSeconds": 300,
-            "extra": {"name": "USD Coin", "version": "2"}
+            "extra": {
+                "name": "USD Coin",
+                "version": "2"
+            }
         }
-    ]
+    ],
+    "extensions": {
+        "bazaar": {
+            "info": {
+                "input": {
+                    "type": "http",
+                    "method": "POST",
+                    "body": {},
+                    "bodyType": "json"
+                },
+                "output": {
+                    "type": "json",
+                    "example": {
+                        "message": {
+                            "role": "assistant",
+                            "content": "📊 CRYPTO SNAPSHOT PRO — BTC/USDT..."
+                        }
+                    }
+                }
+            },
+            "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object"
+            }
+        }
+    }
 }
 
 
 def create_402_response():
-    payload = base64.b64encode(json.dumps(PAYMENT_CONFIG).encode()).decode()
-    logger.info("🔐 402 Payment Required")
+    """Возвращает 402 Payment Required с заголовком payment-required (v2 spec)"""
+    envelope = json.dumps(PAYMENT_CONFIG)
+    encoded = base64.b64encode(envelope.encode("utf-8")).decode("utf-8")
+    logger.info("🔐 402 Payment Required (header)")
     return Response(
         content="Payment Required",
         status_code=402,
-        headers={"payment-required": payload}
+        headers={"payment-required": encoded}
     )
 
 
 async def facilitator_verify(payment_payload: str) -> bool:
+    """Проверка платежа через фасилитатор"""
     logger.info("VERIFY PAYMENT START")
     try:
         async with httpx.AsyncClient(timeout=20) as client:
@@ -75,7 +112,8 @@ async def facilitator_verify(payment_payload: str) -> bool:
                     "x402Version": 2,
                     "paymentPayload": payment_payload,
                     "paymentRequirements": PAYMENT_CONFIG["accepts"][0]
-                }
+                },
+                headers={"Content-Type": "application/json"}
             )
             logger.info(f"VERIFY RESPONSE: {r.text}")
             if r.status_code != 200:
@@ -88,7 +126,7 @@ async def facilitator_verify(payment_payload: str) -> bool:
 
 
 # ============================================================
-# 8-ФАКТОРНЫЙ АНАЛИЗ (все функции остаются)
+# 8-ФАКТОРНЫЙ АНАЛИЗ
 # ============================================================
 
 def calculate_rsi(closes: list[float], period: int = 14) -> float:
@@ -279,7 +317,7 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
 
 
 # ============================================================
-# ОСНОВНОЙ ЭНДПОИНТ — ТОЛЬКО POST
+# ОСНОВНОЙ ЭНДПОИНТ
 # ============================================================
 @app.post("/")
 async def crypto_snapshot(request: Request):
@@ -291,18 +329,19 @@ async def crypto_snapshot(request: Request):
     logger.info(f"PAYMENT HEADER: {bool(payment)}")
 
     if not payment:
+        logger.warning("🚫 No payment detected — returning 402")
         return create_402_response()
 
     # 2. Валидируем через фасилитатор
     valid = await facilitator_verify(payment)
     if not valid:
-        logger.error("PAYMENT INVALID")
+        logger.error("❌ PAYMENT INVALID")
         return JSONResponse(
             {"error": "Payment verification failed"},
             status_code=402
         )
 
-    logger.info("PAYMENT ACCEPTED")
+    logger.info("✅ PAYMENT ACCEPTED")
 
     # 3. Определяем символ
     symbol = "ETH"
@@ -311,6 +350,8 @@ async def crypto_snapshot(request: Request):
         symbol = body.get("symbol", symbol)
     except:
         pass
+
+    logger.info(f"📊 Symbol requested: {symbol}")
 
     symbol = symbol.upper()
     if "USDT" not in symbol:
@@ -421,7 +462,7 @@ async def crypto_snapshot(request: Request):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "service": "crypto-snapshot-pro"}
 
 
 @app.get("/info")
@@ -429,7 +470,23 @@ async def info():
     return {
         "service": "Crypto Snapshot Pro x402 Agent",
         "agentId": 3613,
+        "version": "3.2.0",
         "x402": True,
-        "price": "0.025 USDC",
-        "network": "Base"
+        "price": "0.025 USDC per request",
+        "network": "Base",
+        "features": [
+            "RSI (14)",
+            "EMA (20/50)",
+            "Volume Ratio",
+            "Bollinger Bands",
+            "RSI Divergence",
+            "ATR Volatility",
+            "Pivot Points",
+            "8-Factor Scoring System"
+        ],
+        "endpoints": {
+            "/": "Main endpoint (POST)",
+            "/health": "Health check (GET)",
+            "/info": "Service info (GET)"
+        }
     }
