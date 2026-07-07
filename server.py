@@ -6,7 +6,6 @@ Service: Professional Multi-Factor Market Analysis ($0.025 per request)
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 import httpx
 import time
 import base64
@@ -31,11 +30,6 @@ BINANCE_API = "https://api.binance.com/api/v3"
 _cache = {}
 _CACHE_TTL = 30
 FACILITATOR_URL = "https://x402.org/facilitator"
-
-
-class AgentResponse(BaseModel):
-    message: dict
-
 
 # ============================================================
 # X402 PAYMENT CONFIGURATION
@@ -317,12 +311,12 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
 
 
 # ============================================================
-# ОСНОВНОЙ ЭНДПОИНТ
+# ОСНОВНОЙ ЭНДПОИНТ — ПОДДЕРЖИВАЕТ GET И POST
 # ============================================================
-@app.post("/")
+@app.api_route("/", methods=["GET", "POST"])
 async def crypto_snapshot(request: Request):
     logger.info("=" * 80)
-    logger.info("📨 NEW REQUEST")
+    logger.info(f"📨 NEW REQUEST — Method: {request.method}")
 
     # 1. Проверяем платежный заголовок
     payment = request.headers.get("x-payment") or request.headers.get("payment-signature")
@@ -345,11 +339,14 @@ async def crypto_snapshot(request: Request):
 
     # 3. Определяем символ
     symbol = "ETH"
-    try:
-        body = await request.json()
-        symbol = body.get("symbol", symbol)
-    except:
-        pass
+    if request.method == "POST":
+        try:
+            body = await request.json()
+            symbol = body.get("symbol", symbol)
+        except:
+            pass
+    else:
+        symbol = request.query_params.get("symbol", symbol)
 
     logger.info(f"📊 Symbol requested: {symbol}")
 
@@ -485,7 +482,7 @@ async def info():
             "8-Factor Scoring System"
         ],
         "endpoints": {
-            "/": "Main endpoint (POST)",
+            "/": "Main endpoint (POST/GET)",
             "/health": "Health check (GET)",
             "/info": "Service info (GET)"
         }
