@@ -11,7 +11,6 @@ import httpx
 import time
 import base64
 import json
-import os
 import logging
 import sys
 from typing import Optional, Any
@@ -33,12 +32,6 @@ _cache = {}
 _CACHE_TTL = 10
 
 FACILITATOR_URL = "https://x402.org/facilitator"
-
-
-class AgentRequest(BaseModel):
-    agentId: str
-    message: dict
-    metadata: Optional[dict] = {}
 
 
 class AgentResponse(BaseModel):
@@ -63,9 +56,11 @@ PAYMENT_CONFIG = {
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
             "maxTimeoutSeconds": 300,
-            "extra": {
+            "domain": {
                 "name": "USD Coin",
-                "version": "2"
+                "version": "2",
+                "chainId": 8453,
+                "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
             }
         }
     ],
