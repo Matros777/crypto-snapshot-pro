@@ -296,36 +296,40 @@ async def payable_endpoint(request: Request):
 # ============================================================
 # ОСНОВНОЙ ЭНДПОИНТ С ПОЛНОЙ ПОДДЕРЖКОЙ X402
 # ============================================================
-@app.post("/", response_model=AgentResponse)
+@app.api_route("/", methods=["GET", "POST"])
 async def crypto_snapshot(request: Request):
     # Проверяем x402-платеж
     if not request.headers.get("authorization"):
         return create_402_response()
     
-    try:
-        body = await request.json()
-    except:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    # Определяем символ для анализа
+    symbol = None
     
-    # Гибкая обработка входящих данных
-    content = None
+    if request.method == "POST":
+        try:
+            body = await request.json()
+        except:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+        
+        if "message" in body and isinstance(body["message"], dict):
+            symbol = body["message"].get("content", "").strip()
+        elif isinstance(body, dict) and "symbol" in body:
+            symbol = body["symbol"].strip()
+        elif "content" in body:
+            symbol = body["content"].strip()
+        elif "message" in body and isinstance(body["message"], str):
+            symbol = body["message"].strip()
+    else:  # GET request
+        # Для GET запроса используем параметр symbol из query
+        symbol = request.query_params.get("symbol", "ETH")
     
-    if "message" in body and isinstance(body["message"], dict):
-        content = body["message"].get("content", "").strip()
-    elif isinstance(body, dict) and "symbol" in body:
-        content = body["symbol"].strip()
-    elif "content" in body:
-        content = body["content"].strip()
-    elif "message" in body and isinstance(body["message"], str):
-        content = body["message"].strip()
-    
-    if not content:
+    if not symbol:
         return AgentResponse(message={
             "role": "assistant",
-            "content": "📊 CRYPTO SNAPSHOT PRO\n\nSend a symbol to analyze.\n\nExamples:\n• BTC\n• ETH\n• SOL\n• DOGE\n• XRP\n\nUsage: {\"symbol\": \"BTC\"} or {\"message\": {\"content\": \"BTC\"}}"
+            "content": "📊 CRYPTO SNAPSHOT PRO\n\nSend a symbol to analyze.\n\nExamples:\n• BTC\n• ETH\n• SOL\n• DOGE\n• XRP\n\nUsage: POST {\"symbol\": \"BTC\"} or GET ?symbol=BTC"
         })
     
-    symbol = content.upper()
+    symbol = symbol.upper()
     symbol = f"{symbol}USDT" if "USDT" not in symbol else symbol
 
     try:
@@ -333,7 +337,6 @@ async def crypto_snapshot(request: Request):
         ticker = await fetch_ticker(symbol)
         current_price = float(ticker.get("lastPrice", 0))
         change_24h = float(ticker.get("priceChangePercent", 0))
-        volume_24h = float(ticker.get("quoteVolume", 0))
         high_24h = float(ticker.get("highPrice", 0))
         low_24h = float(ticker.get("lowPrice", 0))
 
@@ -424,19 +427,15 @@ async def crypto_snapshot(request: Request):
         
         # ===== ВАЖНО: ОТПРАВЛЯЕМ SETTLE В ФАСИЛИТАТОР =====
         try:
-            payment_header = request.headers.get("payment-required")
             auth_header = request.headers.get("authorization", "")
             signature = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
             
-            if payment_header and signature:
+            if signature:
                 async with httpx.AsyncClient(timeout=10.0) as client:
-                    # Получаем адрес кошелька из подписи (для фасилитатора)
-                    # В реальном сценарии здесь нужно извлечь address из signature
+                    # Отправляем подтверждение фасилитатору
                     settle_payload = {
-                        "paymentRequirements": payment_header,
-                        "paymentPayload": {
-                            "signature": signature
-                        }
+                        "paymentSignature": signature,
+                        "endpoint": str(request.url)
                     }
                     
                     # Пробуем CDP фасилитатор
@@ -479,9 +478,8 @@ async def root():
         "x402": True,
         "settle": "CDP Facilitator",
         "endpoints": {
-            "/": "Main endpoint (POST)",
+            "/": "Main endpoint (POST/GET)",
             "/payable": "x402 verification endpoint (POST)",
             "/health": "Health check (GET)",
-            "/": "Service info (GET)"
         }
     }
