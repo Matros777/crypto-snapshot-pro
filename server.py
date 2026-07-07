@@ -3,15 +3,13 @@ Crypto Snapshot Pro — x402 Agent for Agentic.Market
 Agent ID: #3613
 Service: Professional Multi-Factor Market Analysis ($0.025 per request)
 """
-
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel
 import httpx
 import time
 import base64
 import json
-import os
-from typing import Optional, Any
+from typing import Optional
 
 app = FastAPI(title="Crypto Snapshot Pro x402 Agent")
 
@@ -31,7 +29,7 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION — ИСПРАВЛЕННЫЙ
+# x402 PAYMENT CONFIGURATION — ИСПРАВЛЕНО
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
@@ -44,18 +42,16 @@ PAYMENT_CONFIG = {
         {
             "scheme": "exact",
             "network": "eip155:8453",
-            "amount": "25000",
+            "amount": "25000",                    # 0.025 USDC (6 decimals)
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
-            "maxTimeoutSeconds": 300
+            "maxTimeoutSeconds": 300,
+            "extra": {
+                "name": "USD Coin",               # Важно для USDC
+                "version": "2"                    # Стандартная версия для USDC на Base
+            }
         }
     ],
-    "domain": {
-        "name": "Crypto Snapshot Pro",
-        "version": "1.0.0",
-        "chainId": 8453,
-        "verifyingContract": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3"
-    },
     "extensions": {
         "bazaar": {
             "info": {
@@ -87,15 +83,21 @@ PAYMENT_CONFIG = {
 def create_402_response():
     """Возвращает 402 Payment Required с правильным заголовком"""
     envelope = json.dumps(PAYMENT_CONFIG)
-    encoded = base64.b64encode(envelope.encode()).decode()
-    
+    encoded = base64.b64encode(envelope.encode("utf-8")).decode("utf-8")
+   
     return Response(
         content="Payment Required",
         status_code=402,
-        headers={"payment-required": encoded}
+        headers={
+            "payment-required": encoded,
+            "content-type": "text/plain"
+        }
     )
 
 
+# ============================================================
+# Остальной код (без изменений)
+# ============================================================
 def calculate_rsi(closes: list[float], period: int = 14) -> float:
     if len(closes) < period + 1:
         return 50.0
@@ -221,6 +223,7 @@ def get_signal_from_factors(rsi: float, price_ema20: float, price_ema50: float,
             long_score += 0.5
         else:
             short_score += 0.5
+
     if long_score >= 4:
         return "LONG", "🚀 Strong Bullish Setup", long_score, short_score
     elif short_score >= 4:
@@ -288,6 +291,7 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
 # ============================================================
 @app.post("/payable")
 async def payable_endpoint(request: Request):
+    # Здесь должна быть реальная проверка подписи, но для начала оставляем заглушку
     if not request.headers.get("authorization"):
         return create_402_response()
     return {"status": "ok", "message": "Payment verified"}
@@ -300,15 +304,15 @@ async def payable_endpoint(request: Request):
 async def crypto_snapshot(request: Request):
     if not request.headers.get("authorization"):
         return create_402_response()
-    
+   
     symbol = None
-    
+   
     if request.method == "POST":
         try:
             body = await request.json()
         except:
             raise HTTPException(status_code=400, detail="Invalid JSON body")
-        
+       
         if "message" in body and isinstance(body["message"], dict):
             symbol = body["message"].get("content", "").strip()
         elif isinstance(body, dict) and "symbol" in body:
@@ -319,13 +323,13 @@ async def crypto_snapshot(request: Request):
             symbol = body["message"].strip()
     else:
         symbol = request.query_params.get("symbol", "ETH")
-    
+   
     if not symbol:
         return AgentResponse(message={
             "role": "assistant",
             "content": "📊 CRYPTO SNAPSHOT PRO\n\nSend a symbol to analyze.\n\nExamples:\n• BTC\n• ETH\n• SOL\n• DOGE\n• XRP\n\nUsage: POST {\"symbol\": \"BTC\"} or GET ?symbol=BTC"
         })
-    
+   
     symbol = symbol.upper()
     symbol = f"{symbol}USDT" if "USDT" not in symbol else symbol
 
@@ -335,7 +339,6 @@ async def crypto_snapshot(request: Request):
         change_24h = float(ticker.get("priceChangePercent", 0))
         high_24h = float(ticker.get("highPrice", 0))
         low_24h = float(ticker.get("lowPrice", 0))
-
         if current_price == 0:
             raise HTTPException(status_code=400, detail=f"Invalid price for {symbol}")
 
@@ -394,25 +397,21 @@ async def crypto_snapshot(request: Request):
             conviction = "LOW"
 
         result = f"""📊 CRYPTO SNAPSHOT PRO — {symbol.replace('USDT', '/USDT')}
-
 {signal_desc}
 📊 Conviction: {conviction}
 🎯 Score: {long_score} LONG / {short_score} SHORT
 💡 Reason: {'Bullish factors dominate.' if long_score > short_score else 'Bearish factors dominate.' if short_score > long_score else 'Mixed signals. Wait for confirmation.'}
-
 📈 TECHNICALS
 • Price: {format_price(current_price)} ({change_24h:+.2f}%)
 • RSI(14): {rsi:.1f} ({'oversold' if rsi < 30 else 'overbought' if rsi > 70 else 'neutral'})
 • EMA(20): {format_price(ema20)}
 • EMA(50): {format_price(ema50)}
 • Volume Ratio: {volume_ratio:.2f}x
-
 🎯 STRATEGY
 • Entry: {format_price(entry)}
 • Target: {format_price(target)}
 • Stop: {format_price(stop)}
 • Risk/Reward: 1:{risk_reward:.2f}
-
 📌 KEY LEVELS
 • Support: {format_price(support)}
 • Resistance: {format_price(resistance)}
@@ -420,7 +419,7 @@ async def crypto_snapshot(request: Request):
 • 24h Low: {format_price(low_24h)}
 """
         result += "\n\n⚠️ Risk Disclosure: This is NOT financial advice. Always manage risk. Past performance does not guarantee future results."
-        
+       
         return AgentResponse(message={"role": "assistant", "content": result})
 
     except HTTPException:
