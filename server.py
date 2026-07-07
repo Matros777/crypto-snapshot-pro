@@ -10,7 +10,10 @@ import httpx
 import time
 import base64
 import json
+import os
 from typing import Optional, Any
+from eth_account.messages import encode_structured_data
+from eth_account import Account
 
 app = FastAPI(title="Crypto Snapshot Pro x402 Agent")
 
@@ -84,13 +87,31 @@ PAYMENT_CONFIG = {
 
 
 def create_402_response():
-    """Возвращает 402 Payment Required с заголовком payment-required"""
+    """Возвращает 402 Payment Required с заголовком payment-required и подписью"""
     envelope = json.dumps(PAYMENT_CONFIG)
     encoded = base64.b64encode(envelope.encode()).decode()
+    
+    # Подписываем конфиг
+    try:
+        message = encode_structured_data(PAYMENT_CONFIG)
+        private_key = os.getenv("SIGNER_PRIVATE_KEY")
+        if private_key:
+            signed = Account.sign_message(message, private_key)
+            signature = signed.signature.hex()
+        else:
+            signature = None
+    except Exception as e:
+        print(f"⚠️ Ошибка подписи: {e}")
+        signature = None
+    
+    headers = {"payment-required": encoded}
+    if signature:
+        headers["payment-signature"] = signature
+    
     return Response(
         content="Payment Required",
         status_code=402,
-        headers={"payment-required": encoded}
+        headers=headers
     )
 
 
