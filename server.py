@@ -46,7 +46,7 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION — ИСПРАВЛЕННЫЙ
+# x402 PAYMENT CONFIGURATION — ФИНАЛЬНАЯ ВЕРСИЯ
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
