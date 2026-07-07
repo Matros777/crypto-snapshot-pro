@@ -29,7 +29,7 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION — ИСПРАВЛЕНО
+# x402 PAYMENT CONFIGURATION
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
@@ -42,13 +42,13 @@ PAYMENT_CONFIG = {
         {
             "scheme": "exact",
             "network": "eip155:8453",
-            "amount": "25000",                    # 0.025 USDC (6 decimals)
+            "amount": "25000",
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
             "maxTimeoutSeconds": 300,
             "extra": {
-                "name": "USD Coin",               # Важно для USDC
-                "version": "2"                    # Стандартная версия для USDC на Base
+                "name": "USD Coin",
+                "version": "2"
             }
         }
     ],
@@ -81,7 +81,7 @@ PAYMENT_CONFIG = {
 
 
 def create_402_response():
-    """Возвращает 402 Payment Required с правильным заголовком"""
+    """Возвращает 402 Payment Required"""
     envelope = json.dumps(PAYMENT_CONFIG)
     encoded = base64.b64encode(envelope.encode("utf-8")).decode("utf-8")
    
@@ -96,7 +96,7 @@ def create_402_response():
 
 
 # ============================================================
-# Остальной код (без изменений)
+# Технические функции (без изменений)
 # ============================================================
 def calculate_rsi(closes: list[float], period: int = 14) -> float:
     if len(closes) < period + 1:
@@ -116,7 +116,7 @@ def calculate_rsi(closes: list[float], period: int = 14) -> float:
 
 def calculate_ema(prices: list[float], period: int) -> float:
     if not prices:
-        return 0
+        return 0.0
     multiplier = 2 / (period + 1)
     ema = prices[0]
     for price in prices[1:]:
@@ -180,43 +180,47 @@ def get_signal_from_factors(rsi: float, price_ema20: float, price_ema50: float,
                            macd: float, macd_signal: float, macd_hist: float,
                            bb_upper: float, bb_middle: float, bb_lower: float,
                            rsi_divergence: str, pivot: dict) -> tuple[str, str, int, int]:
-    long_score, short_score = 0, 0
-    if rsi < 30:
-        long_score += 2
-    elif rsi > 70:
-        short_score += 2
-    elif rsi < 40:
-        long_score += 1
-    elif rsi > 60:
-        short_score += 1
+    long_score = short_score = 0
+    
+    if rsi < 30: long_score += 2
+    elif rsi > 70: short_score += 2
+    elif rsi < 40: long_score += 1
+    elif rsi > 60: short_score += 1
+
     if price_ema20 > price_ema50:
         long_score += 1
     else:
         short_score += 1
+
     if macd > macd_signal and macd_hist > 0:
         long_score += 1
     elif macd < macd_signal and macd_hist < 0:
         short_score += 1
+
     if bb_upper > 0 and bb_lower > 0:
         bb_position = (bb_middle - bb_lower) / (bb_upper - bb_lower) if bb_upper != bb_lower else 0.5
         if bb_position < 0.2:
             long_score += 1
         elif bb_position > 0.8:
             short_score += 1
+
     if volume_ratio > 1.5:
         if long_score > short_score:
             long_score += 1
         else:
             short_score += 1
+
     if rsi_divergence == 'bullish':
         long_score += 1
     elif rsi_divergence == 'bearish':
         short_score += 1
+
     if high_low_range > 0.03:
         if long_score > short_score:
             long_score += 1
         else:
             short_score += 1
+
     if pivot:
         current_price = bb_middle
         if current_price > pivot['pivot']:
@@ -273,15 +277,7 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
         if response.status_code != 200:
             raise HTTPException(status_code=400, detail=f"Binance API error: {response.text}")
         data = response.json()
-        klines = []
-        for k in data:
-            klines.append({
-                "close": float(k[4]),
-                "high": float(k[2]),
-                "low": float(k[3]),
-                "volume": float(k[5]),
-                "time": k[0]
-            })
+        klines = [{"close": float(k[4]), "high": float(k[2]), "low": float(k[3]), "volume": float(k[5]), "time": k[0]} for k in data]
         _cache[cache_key] = {"data": klines, "time": now}
         return klines
 
@@ -291,8 +287,12 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
 # ============================================================
 @app.post("/payable")
 async def payable_endpoint(request: Request):
-    # Здесь должна быть реальная проверка подписи, но для начала оставляем заглушку
-    if not request.headers.get("authorization"):
+    payment_header = (
+        request.headers.get("x-payment") or
+        request.headers.get("payment-signature") or
+        request.headers.get("authorization")
+    )
+    if not payment_header:
         return create_402_response()
     return {"status": "ok", "message": "Payment verified"}
 
@@ -302,7 +302,14 @@ async def payable_endpoint(request: Request):
 # ============================================================
 @app.api_route("/", methods=["GET", "POST"])
 async def crypto_snapshot(request: Request):
-    if not request.headers.get("authorization"):
+    # Проверка оплаты x402
+    payment_header = (
+        request.headers.get("x-payment") or
+        request.headers.get("payment-signature") or
+        request.headers.get("authorization")
+    )
+    
+    if not payment_header:
         return create_402_response()
    
     symbol = None
@@ -331,14 +338,16 @@ async def crypto_snapshot(request: Request):
         })
    
     symbol = symbol.upper()
-    symbol = f"{symbol}USDT" if "USDT" not in symbol else symbol
-
+    if "USDT" not in symbol:
+        symbol = f"{symbol}USDT"
+   
     try:
         ticker = await fetch_ticker(symbol)
         current_price = float(ticker.get("lastPrice", 0))
         change_24h = float(ticker.get("priceChangePercent", 0))
         high_24h = float(ticker.get("highPrice", 0))
         low_24h = float(ticker.get("lowPrice", 0))
+
         if current_price == 0:
             raise HTTPException(status_code=400, detail=f"Invalid price for {symbol}")
 
@@ -361,8 +370,7 @@ async def crypto_snapshot(request: Request):
 
         signal, signal_desc, long_score, short_score = get_signal_from_factors(
             rsi, ema20, ema50, volume_ratio, high_low_range,
-            macd, macd_signal, macd_hist,
-            bb_upper, bb_middle, bb_lower,
+            macd, macd_signal, macd_hist, bb_upper, bb_middle, bb_lower,
             rsi_divergence, pivot
         )
 
@@ -387,14 +395,7 @@ async def crypto_snapshot(request: Request):
             risk_reward = 1.0
 
         total_score = long_score + short_score
-        if total_score >= 5:
-            conviction = "VERY HIGH"
-        elif total_score >= 4:
-            conviction = "HIGH"
-        elif total_score >= 3:
-            conviction = "MEDIUM"
-        else:
-            conviction = "LOW"
+        conviction = "VERY HIGH" if total_score >= 5 else "HIGH" if total_score >= 4 else "MEDIUM" if total_score >= 3 else "LOW"
 
         result = f"""📊 CRYPTO SNAPSHOT PRO — {symbol.replace('USDT', '/USDT')}
 {signal_desc}
@@ -438,9 +439,9 @@ async def root():
     return {
         "service": "Crypto Snapshot Pro x402 Agent",
         "agentId": "3613",
-        "version": "3.2.0",
+        "version": "3.2.1",
         "data_source": "Binance Public API",
-        "supported_pairs": "All Binance spot pairs (BTCUSDT, ETHUSDT, SOLUSDT, etc.)",
+        "supported_pairs": "All Binance spot pairs",
         "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "8-Factor Scoring"],
         "x402": True,
         "settle": "CDP Facilitator",
