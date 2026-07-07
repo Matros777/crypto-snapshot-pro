@@ -12,8 +12,6 @@ import base64
 import json
 import os
 from typing import Optional, Any
-from eth_account.messages import encode_structured_data
-from eth_account import Account
 
 app = FastAPI(title="Crypto Snapshot Pro x402 Agent")
 
@@ -33,7 +31,7 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION
+# x402 PAYMENT CONFIGURATION — ИСПРАВЛЕННЫЙ
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
@@ -49,13 +47,7 @@ PAYMENT_CONFIG = {
             "amount": "25000",
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
-            "maxTimeoutSeconds": 300,
-            "domain": {
-                "name": "Crypto Snapshot Pro",
-                "version": "1.0.0",
-                "chainId": 8453,
-                "verifyingContract": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3"
-            }
+            "maxTimeoutSeconds": 300
         }
     ],
     "extensions": {
@@ -85,33 +77,34 @@ PAYMENT_CONFIG = {
     }
 }
 
+# Добавляем domain отдельно для EIP-712
+EIP712_DOMAIN = {
+    "name": "Crypto Snapshot Pro",
+    "version": "1.0.0",
+    "chainId": 8453,
+    "verifyingContract": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3"
+}
+
 
 def create_402_response():
-    """Возвращает 402 Payment Required с заголовком payment-required и подписью"""
-    envelope = json.dumps(PAYMENT_CONFIG)
+    """Возвращает 402 Payment Required с правильным заголовком"""
+    # Добавляем domain в каждый accept
+    config = PAYMENT_CONFIG.copy()
+    config["accepts"] = [
+        {
+            **accept,
+            "domain": EIP712_DOMAIN
+        }
+        for accept in config["accepts"]
+    ]
+    
+    envelope = json.dumps(config)
     encoded = base64.b64encode(envelope.encode()).decode()
-    
-    # Подписываем конфиг
-    try:
-        message = encode_structured_data(PAYMENT_CONFIG)
-        private_key = os.getenv("SIGNER_PRIVATE_KEY")
-        if private_key:
-            signed = Account.sign_message(message, private_key)
-            signature = signed.signature.hex()
-        else:
-            signature = None
-    except Exception as e:
-        print(f"⚠️ Ошибка подписи: {e}")
-        signature = None
-    
-    headers = {"payment-required": encoded}
-    if signature:
-        headers["payment-signature"] = signature
     
     return Response(
         content="Payment Required",
         status_code=402,
-        headers=headers
+        headers={"payment-required": encoded}
     )
 
 
@@ -303,27 +296,23 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
 
 
 # ============================================================
-# PAYABLE ENDPOINT для проверки x402 на Agentic.Market
+# PAYABLE ENDPOINT
 # ============================================================
 @app.post("/payable")
 async def payable_endpoint(request: Request):
-    """Эндпоинт для проверки x402 на Agentic.Market"""
     if not request.headers.get("authorization"):
         return create_402_response()
-    
     return {"status": "ok", "message": "Payment verified"}
 
 
 # ============================================================
-# ОСНОВНОЙ ЭНДПОИНТ С ПОЛНОЙ ПОДДЕРЖКОЙ X402
+# ОСНОВНОЙ ЭНДПОИНТ
 # ============================================================
 @app.api_route("/", methods=["GET", "POST"])
 async def crypto_snapshot(request: Request):
-    # Проверяем x402-платеж
     if not request.headers.get("authorization"):
         return create_402_response()
     
-    # Определяем символ для анализа
     symbol = None
     
     if request.method == "POST":
@@ -340,8 +329,7 @@ async def crypto_snapshot(request: Request):
             symbol = body["content"].strip()
         elif "message" in body and isinstance(body["message"], str):
             symbol = body["message"].strip()
-    else:  # GET request
-        # Для GET запроса используем параметр symbol из query
+    else:
         symbol = request.query_params.get("symbol", "ETH")
     
     if not symbol:
@@ -354,7 +342,6 @@ async def crypto_snapshot(request: Request):
     symbol = f"{symbol}USDT" if "USDT" not in symbol else symbol
 
     try:
-        # ===== ПОЛУЧАЕМ ДАННЫЕ =====
         ticker = await fetch_ticker(symbol)
         current_price = float(ticker.get("lastPrice", 0))
         change_24h = float(ticker.get("priceChangePercent", 0))
@@ -445,34 +432,6 @@ async def crypto_snapshot(request: Request):
 • 24h Low: {format_price(low_24h)}
 """
         result += "\n\n⚠️ Risk Disclosure: This is NOT financial advice. Always manage risk. Past performance does not guarantee future results."
-        
-        # ===== ВАЖНО: ОТПРАВЛЯЕМ SETTLE В ФАСИЛИТАТОР =====
-        try:
-            auth_header = request.headers.get("authorization", "")
-            signature = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
-            
-            if signature:
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    # Отправляем подтверждение фасилитатору
-                    settle_payload = {
-                        "paymentSignature": signature,
-                        "endpoint": str(request.url)
-                    }
-                    
-                    # Пробуем CDP фасилитатор
-                    settle_response = await client.post(
-                        "https://api.coinbase.com/x402/facilitator/settle",
-                        json=settle_payload
-                    )
-                    
-                    if settle_response.status_code == 200:
-                        print(f"✅ Settle успешен: {settle_response.json()}")
-                    else:
-                        print(f"⚠️ Settle ответ: {settle_response.status_code} - {settle_response.text}")
-                        
-        except Exception as e:
-            print(f"Settle error: {e}")
-            # Не прерываем ответ, даже если settle не сработал
         
         return AgentResponse(message={"role": "assistant", "content": result})
 
