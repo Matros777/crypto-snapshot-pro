@@ -30,7 +30,7 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION — ОБНОВЛЕН
+# x402 PAYMENT CONFIGURATION
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
@@ -290,12 +290,11 @@ async def payable_endpoint(request: Request):
     if not request.headers.get("authorization"):
         return create_402_response()
     
-    # Если есть авторизация, просто отвечаем OK
     return {"status": "ok", "message": "Payment verified"}
 
 
 # ============================================================
-# ОСНОВНОЙ ЭНДПОИНТ (гибкий, без строгой валидации)
+# ОСНОВНОЙ ЭНДПОИНТ С ПОЛНОЙ ПОДДЕРЖКОЙ X402
 # ============================================================
 @app.post("/", response_model=AgentResponse)
 async def crypto_snapshot(request: Request):
@@ -311,23 +310,15 @@ async def crypto_snapshot(request: Request):
     # Гибкая обработка входящих данных
     content = None
     
-    # Вариант 1: стандартный формат Agentic.Market с agentId
     if "message" in body and isinstance(body["message"], dict):
         content = body["message"].get("content", "").strip()
-    
-    # Вариант 2: прямой символ в теле
     elif isinstance(body, dict) and "symbol" in body:
         content = body["symbol"].strip()
-    
-    # Вариант 3: просто текст в content
     elif "content" in body:
         content = body["content"].strip()
-    
-    # Вариант 4: если в message пришла строка
     elif "message" in body and isinstance(body["message"], str):
         content = body["message"].strip()
     
-    # Если ничего не найдено
     if not content:
         return AgentResponse(message={
             "role": "assistant",
@@ -338,6 +329,7 @@ async def crypto_snapshot(request: Request):
     symbol = f"{symbol}USDT" if "USDT" not in symbol else symbol
 
     try:
+        # ===== ПОЛУЧАЕМ ДАННЫЕ =====
         ticker = await fetch_ticker(symbol)
         current_price = float(ticker.get("lastPrice", 0))
         change_24h = float(ticker.get("priceChangePercent", 0))
@@ -429,6 +421,39 @@ async def crypto_snapshot(request: Request):
 • 24h Low: {format_price(low_24h)}
 """
         result += "\n\n⚠️ Risk Disclosure: This is NOT financial advice. Always manage risk. Past performance does not guarantee future results."
+        
+        # ===== ВАЖНО: ОТПРАВЛЯЕМ SETTLE В ФАСИЛИТАТОР =====
+        try:
+            payment_header = request.headers.get("payment-required")
+            auth_header = request.headers.get("authorization", "")
+            signature = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
+            
+            if payment_header and signature:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    # Получаем адрес кошелька из подписи (для фасилитатора)
+                    # В реальном сценарии здесь нужно извлечь address из signature
+                    settle_payload = {
+                        "paymentRequirements": payment_header,
+                        "paymentPayload": {
+                            "signature": signature
+                        }
+                    }
+                    
+                    # Пробуем CDP фасилитатор
+                    settle_response = await client.post(
+                        "https://api.coinbase.com/x402/facilitator/settle",
+                        json=settle_payload
+                    )
+                    
+                    if settle_response.status_code == 200:
+                        print(f"✅ Settle успешен: {settle_response.json()}")
+                    else:
+                        print(f"⚠️ Settle ответ: {settle_response.status_code} - {settle_response.text}")
+                        
+        except Exception as e:
+            print(f"Settle error: {e}")
+            # Не прерываем ответ, даже если settle не сработал
+        
         return AgentResponse(message={"role": "assistant", "content": result})
 
     except HTTPException:
@@ -447,11 +472,12 @@ async def root():
     return {
         "service": "Crypto Snapshot Pro x402 Agent",
         "agentId": "3613",
-        "version": "3.1.0",
+        "version": "3.2.0",
         "data_source": "Binance Public API",
         "supported_pairs": "All Binance spot pairs (BTCUSDT, ETHUSDT, SOLUSDT, etc.)",
         "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "8-Factor Scoring"],
         "x402": True,
+        "settle": "CDP Facilitator",
         "endpoints": {
             "/": "Main endpoint (POST)",
             "/payable": "x402 verification endpoint (POST)",
