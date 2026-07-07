@@ -48,7 +48,11 @@ PAYMENT_CONFIG = {
 def create_402_response():
     envelope = json.dumps(PAYMENT_CONFIG)
     encoded = base64.b64encode(envelope.encode("utf-8")).decode("utf-8")
-    return Response(content="Payment Required", status_code=402, headers={"payment-required": encoded})
+    return Response(
+        content="Payment Required",
+        status_code=402,
+        headers={"payment-required": encoded}
+    )
 
 
 def has_valid_payment(request: Request) -> bool:
@@ -96,39 +100,27 @@ def detect_rsi_divergence(rsi, closes):
 
 def calculate_pivot_points(high, low, close):
     p = (high + low + close) / 3
-    return {
-        'pivot': round(p, 2),
-        'r1': round(2*p - low, 2),
-        's1': round(2*p - high, 2)
-    }
+    return {'pivot': round(p, 2)}
 
 
 def get_signal(rsi, ema20, ema50, vol_ratio, hl_range, bb_pos, rsi_div, price, pivot):
     long = short = 0
-
     if rsi < 30: long += 2
     elif rsi > 70: short += 2
     elif rsi < 40: long += 1
     elif rsi > 60: short += 1
-
     if ema20 > ema50: long += 1
     else: short += 1
-
     if bb_pos < 0.25: long += 1
     elif bb_pos > 0.75: short += 1
-
     if vol_ratio > 1.5:
         if long > short: long += 1
         else: short += 1
-
     if rsi_div == 'bullish': long += 1
     elif rsi_div == 'bearish': short += 1
-
     if hl_range > 0.03:
         if long > short: long += 1
         else: short += 1
-
-    # Pivot Points influence
     if price > pivot['pivot']: long += 0.5
     else: short += 0.5
 
@@ -140,7 +132,7 @@ def get_signal(rsi, ema20, ema50, vol_ratio, hl_range, bb_pos, rsi_div, price, p
 
 
 # ============================================================
-# MAIN
+# MAIN ENDPOINT
 # ============================================================
 @app.api_route("/", methods=["GET", "POST"])
 async def crypto_snapshot(request: Request):
@@ -182,21 +174,51 @@ async def crypto_snapshot(request: Request):
 
         signal, desc, ls, ss = get_signal(rsi, ema20, ema50, vol_ratio, hl_range, bb_pos, rsi_div, price, pivot)
 
-        result = f"""📊 CRYPTO SNAPSHOT PRO — {symbol.replace('USDT', '/USDT')}
-{desc}
-📊 Conviction: HIGH
-🎯 Score: {ls:.1f} LONG / {ss:.1f} SHORT
+        # ==================== СТРУКТУРИРОВАННЫЙ ВЫВОД ====================
+        result = f"""
+╔══════════════════════════════════════════════════════════════╗
+║ 📊 CRYPTO SNAPSHOT PRO — {symbol.replace('USDT', '/USDT')} ║
+╚══════════════════════════════════════════════════════════════╝
 
-📈 Price: ${price:,.2f} ({change:+.2f}%)
-• RSI(14): {rsi:.1f}
-• EMA20/50: ${ema20:,.2f} / ${ema50:,.2f}
-• Volume Ratio: {vol_ratio:.2f}x
-• BB Position: {bb_pos:.2f}
-• Pivot: ${pivot['pivot']:,.2f}
+📌 ТОРГОВЫЙ СИГНАЛ
+─────────────────────────────────────────────────────────────
+  Направление: {signal}
+  Убеждённость: HIGH
+  Счёт: {ls:.1f} LONG / {ss:.1f} SHORT
 
-⚠️ Risk Disclosure: This is NOT financial advice."""
+📈 ТЕХНИЧЕСКИЙ АНАЛИЗ
+─────────────────────────────────────────────────────────────
+  Цена: ${price:,.2f} ({change:+.2f}%)
+  RSI (14): {rsi:.1f} ({'oversold' if rsi < 30 else 'overbought' if rsi > 70 else 'neutral'})
+  EMA (20): ${ema20:,.2f}
+  EMA (50): ${ema50:,.2f}
+  Тренд EMA: {'🟢 BULLISH' if ema20 > ema50 else '🔴 BEARISH'}
 
-        return AgentResponse(message={"role": "assistant", "content": result})
+📊 ОБЪЁМ И ВОЛАТИЛЬНОСТЬ
+─────────────────────────────────────────────────────────────
+  Volume Ratio: {vol_ratio:.2f}x
+  BB Position: {bb_pos:.2f} ({'перекупленность' if bb_pos > 0.7 else 'перепроданность' if bb_pos < 0.3 else 'нейтрально'})
+  Pivot Point: ${pivot['pivot']:,.2f}
+
+🎯 ТОРГОВАЯ СТРАТЕГИЯ
+─────────────────────────────────────────────────────────────
+  {'🟢 ДИВЕРГЕНЦИЯ: ' + rsi_div.upper() if rsi_div != 'none' else 'Дивергенция: отсутствует'}
+
+⚠️ УПРАВЛЕНИЕ РИСКАМИ
+─────────────────────────────────────────────────────────────
+  Вход: ${price:,.2f}
+  Цель: ${price * 1.05:,.2f}
+  Стоп-лосс: ${price * 0.95:,.2f}
+  Risk/Reward: 1:1.00
+
+{'🚀 СИЛЬНЫЙ БЫЧИЙ СИГНАЛ' if signal == 'LONG' else ''}
+{'🔻 СИЛЬНЫЙ МЕДВЕЖИЙ СИГНАЛ' if signal == 'SHORT' else ''}
+{'📌 НЕЙТРАЛЬНО — ЖДЁМ ПОДТВЕРЖДЕНИЯ' if signal == 'HOLD' else ''}
+
+⚠️ ДИСКЛЕЙМЕР: Это не финансовый совет. Торгуйте с осторожностью.
+"""
+        return AgentResponse(message={"role": "assistant", "content": result.strip()})
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
