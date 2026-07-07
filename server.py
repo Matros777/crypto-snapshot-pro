@@ -30,7 +30,7 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION
+# x402 PAYMENT CONFIGURATION — ОБНОВЛЕН
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
@@ -46,7 +46,13 @@ PAYMENT_CONFIG = {
             "amount": "25000",
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
-            "maxTimeoutSeconds": 300
+            "maxTimeoutSeconds": 300,
+            "domain": {
+                "name": "Crypto Snapshot Pro",
+                "version": "1.0.0",
+                "chainId": 8453,
+                "verifyingContract": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3"
+            }
         }
     ],
     "extensions": {
