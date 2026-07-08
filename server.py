@@ -136,8 +136,10 @@ def create_402_response():
 # ============================================================
 # FACILITATOR VERIFICATION (REQUIRED FOR SIGNAL)
 # ============================================================
+FACILITATOR_URL = "https://facilitator.xpay.sh"
+
 async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
-    """Полная проверка платежа через x402.org фасилитатор"""
+    """Полная проверка платежа через XPay фасилитатор"""
     try:
         # 1. Декодируем payload
         decoded = base64.b64decode(payment_payload).decode("utf-8")
@@ -205,7 +207,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         # 5. Отправляем verify в фасилитатор
         async with httpx.AsyncClient(timeout=20) as client:
             verify_response = await client.post(
-                "https://x402.org/facilitator/verify",
+                f"{FACILITATOR_URL}/verify",
                 json={
                     "paymentPayload": payment_payload_data,
                     "paymentRequirements": payment_requirements
@@ -226,7 +228,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
             
             # 6. Отправляем settle в фасилитатор
             settle_response = await client.post(
-                "https://x402.org/facilitator/settle",
+                f"{FACILITATOR_URL}/settle",
                 json={
                     "paymentPayload": payment_payload_data,
                     "paymentRequirements": payment_requirements
@@ -626,7 +628,7 @@ async def root():
         "supported_pairs": "All Binance spot pairs (BTCUSDT, ETHUSDT, SOLUSDT, etc.)",
         "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "8-Factor Scoring"],
         "x402": True,
-        "verify": "x402.org Facilitator",
+        "verify": "XPay Facilitator",
         "endpoints": {
             "/": "Main endpoint (POST/GET)",
             "/payable": "x402 verification endpoint (POST)",
