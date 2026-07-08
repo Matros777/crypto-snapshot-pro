@@ -46,8 +46,8 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION - ИСПРАВЛЕННАЯ ВЕРСИЯ
-# domain ВНУТРИ accepts[0] - ЭТО ВАЖНО!
+# x402 PAYMENT CONFIGURATION - ФИНАЛЬНАЯ ВЕРСИЯ
+# domain НА ДВУХ УРОВНЯХ (корневой + внутри accepts[0])
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
@@ -72,6 +72,12 @@ PAYMENT_CONFIG = {
             }
         }
     ],
+    "domain": {
+        "name": "USD Coin",
+        "version": "2",
+        "chainId": 8453,
+        "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    },
     "extensions": {
         "bazaar": {
             "info": {
@@ -195,7 +201,8 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         payment_requirements = {
             "x402Version": 2,
             "resource": PAYMENT_CONFIG.get("resource"),
-            "accepts": PAYMENT_CONFIG.get("accepts")
+            "accepts": PAYMENT_CONFIG.get("accepts"),
+            "domain": PAYMENT_CONFIG.get("domain")  # <-- ДОБАВЛЯЕМ domain
         }
         
         # 4. Формируем paymentPayload для фасилитатора
