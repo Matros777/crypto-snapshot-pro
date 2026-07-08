@@ -120,14 +120,14 @@ def create_402_response():
 # ============================================================
 # FACILITATOR VERIFICATION (REQUIRED FOR SIGNAL)
 # ============================================================
-async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
-    """Полная проверка платежа через x402.org фасилитатор"""
+async def verify_with_facilitator(payment_payload: str) -> bool:
+    """Проверка платежа через x402.org фасилитатор"""
     try:
-        # 1. Декодируем payload
+        # Декодируем payload
         decoded = base64.b64decode(payment_payload).decode("utf-8")
         payment_data = json.loads(decoded)
         
-        # 2. Извлекаем authorization для дополнительной проверки
+        # Извлекаем authorization для проверки
         authorization = payment_data.get("payload", {}).get("authorization", {})
         
         if not authorization:
@@ -170,30 +170,15 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         
         logger.info(f"✅ Authorization verified: {value} USDC to {to_addr}")
         
-        # 3. Формируем paymentRequirements (весь PAYMENT_CONFIG)
-        payment_requirements = {
-            "x402Version": 2,
-            "resource": PAYMENT_CONFIG.get("resource"),
-            "accepts": PAYMENT_CONFIG.get("accepts"),
-            "domain": PAYMENT_CONFIG.get("domain")
-        }
-        
-        # 4. Формируем paymentPayload для фасилитатора
-        payment_payload_data = {
-            "x402Version": 2,
-            "payload": payment_data.get("payload"),
-            "extensions": payment_data.get("extensions", {}),
-            "resource": payment_data.get("resource", {}),
-            "accepted": payment_data.get("accepted", {})
-        }
-        
-        # 5. Отправляем verify в фасилитатор
+        # Формируем запрос в фасилитатор
         async with httpx.AsyncClient(timeout=20) as client:
+            # 1. Проверяем подпись через фасилитатор
             verify_response = await client.post(
                 "https://x402.org/facilitator/verify",
                 json={
-                    "paymentPayload": payment_payload_data,
-                    "paymentRequirements": payment_requirements
+                    "x402Version": 2,
+                    "paymentPayload": payment_data,
+                    "paymentRequirements": PAYMENT_CONFIG
                 },
                 headers={"Content-Type": "application/json"}
             )
@@ -204,17 +189,18 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
             
             verify_data = verify_response.json()
             if not verify_data.get("isValid", False):
-                logger.warning(f"⚠️ Invalid signature: {verify_data}")
+                logger.warning("⚠️ Invalid signature")
                 return False
             
             logger.info("✅ Signature verified by facilitator")
             
-            # 6. Отправляем settle в фасилитатор
+            # 2. Отправляем settle
             settle_response = await client.post(
                 "https://x402.org/facilitator/settle",
                 json={
-                    "paymentPayload": payment_payload_data,
-                    "paymentRequirements": payment_requirements
+                    "x402Version": 2,
+                    "paymentPayload": payment_data,
+                    "paymentRequirements": PAYMENT_CONFIG
                 },
                 headers={"Content-Type": "application/json"}
             )
@@ -431,7 +417,7 @@ async def payable_endpoint(request: Request):
     if not payment:
         return create_402_response()
     
-    valid = await verify_and_settle_with_facilitator(payment)
+    valid = await verify_with_facilitator(payment)
     if not valid:
         return JSONResponse(
             {"error": "Payment verification failed"},
@@ -454,7 +440,7 @@ async def crypto_snapshot(request: Request):
         return create_402_response()
     
     # ⚠️ CRITICAL: Must verify through facilitator
-    valid = await verify_and_settle_with_facilitator(payment)
+    valid = await verify_with_facilitator(payment)
     if not valid:
         return JSONResponse(
             {"error": "Payment verification failed by facilitator"},
