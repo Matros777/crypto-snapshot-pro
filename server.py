@@ -32,9 +32,13 @@ _cache = {}
 _CACHE_TTL = 10
 
 # ============================================================
-# ИСПРАВЛЕННЫЙ ФАСИЛИТАТОР — COINBASE CDP
+# ALCHEMY RPC (ПРЯМАЯ ВЕРИФИКАЦИЯ НА БЛОКЧЕЙНЕ)
 # ============================================================
-FACILITATOR_URL = "https://api.cdp.coinbase.com/platform/v2/x402"
+ALCHEMY_URL = "https://base-mainnet.g.alchemy.com/v2/U8khpdvO0rAwu9ojyBOpr"
+
+# USDC контракт на Base
+USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+PAYTO_ADDRESS = "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3"
 
 
 class AgentResponse(BaseModel):
@@ -42,7 +46,7 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION — ФИНАЛЬНАЯ ВЕРСИЯ
+# x402 PAYMENT CONFIGURATION
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
@@ -105,27 +109,90 @@ def create_402_response():
     )
 
 
-async def facilitator_verify(payment_payload: str) -> bool:
-    """Проверка платежа через Coinbase CDP фасилитатор"""
-    logger.info("VERIFY PAYMENT START")
+# ============================================================
+# ALCHEMY ВЕРИФИКАЦИЯ ПЛАТЕЖА (ПРЯМО НА БЛОКЧЕЙНЕ)
+# ============================================================
+async def verify_payment_onchain(tx_hash: str) -> bool:
+    """
+    Проверяет, что транзакция с указанным хешем:
+    1. Существует
+    2. Отправляет USDC на адрес агента (PAYTO_ADDRESS)
+    3. Сумма >= 0.025 USDC (25000 в 6 decimals)
+    """
+    logger.info(f"🔍 Verifying transaction: {tx_hash}")
+    
     try:
         async with httpx.AsyncClient(timeout=20) as client:
-            r = await client.post(
-                f"{FACILITATOR_URL}/verify",
-                json={
-                    "x402Version": 2,
-                    "paymentPayload": payment_payload,
-                    "paymentRequirements": PAYMENT_CONFIG["accepts"][0]
-                },
+            # Получаем транзакцию по хешу
+            payload = {
+                "id": "1",
+                "jsonrpc": "2.0",
+                "method": "eth_getTransactionReceipt",
+                "params": [tx_hash]
+            }
+            
+            response = await client.post(
+                ALCHEMY_URL,
+                json=payload,
                 headers={"Content-Type": "application/json"}
             )
-            logger.info(f"VERIFY RESPONSE: {r.text}")
-            if r.status_code != 200:
+            
+            if response.status_code != 200:
+                logger.error(f"❌ Alchemy RPC error: {response.status_code}")
                 return False
-            data = r.json()
-            return data.get("isValid", False)
+            
+            data = response.json()
+            
+            if "error" in data:
+                logger.error(f"❌ Alchemy RPC error: {data['error']}")
+                return False
+            
+            receipt = data.get("result")
+            
+            if not receipt:
+                logger.warning(f"❌ Transaction not found: {tx_hash}")
+                return False
+            
+            # Проверяем статус транзакции (0x1 = успешно)
+            if receipt.get("status") != "0x1":
+                logger.warning(f"❌ Transaction failed: {tx_hash}")
+                return False
+            
+            # Проверяем логи транзакции (Transfer event)
+            logs = receipt.get("logs", [])
+            
+            for log in logs:
+                # Проверяем, что это USDC Transfer
+                if log.get("address", "").lower() != USDC_ADDRESS.lower():
+                    continue
+                
+                # Топики: [Transfer, from, to]
+                topics = log.get("topics", [])
+                if len(topics) < 3:
+                    continue
+                
+                # topics[2] = получатель (адрес агента)
+                to_address = "0x" + topics[2][-40:] if len(topics[2]) >= 40 else None
+                
+                if to_address and to_address.lower() == PAYTO_ADDRESS.lower():
+                    # Декодируем сумму (data)
+                    data_hex = log.get("data", "0x")
+                    if len(data_hex) >= 66:
+                        amount_hex = data_hex[-64:] if len(data_hex) >= 64 else data_hex
+                        amount = int(amount_hex, 16)
+                        
+                        # Проверяем сумму (0.025 USDC = 25000 в 6 decimals)
+                        if amount >= 25000:
+                            logger.info(f"✅ Payment verified: {amount} USDC to {to_address}")
+                            return True
+                        else:
+                            logger.warning(f"⚠️ Amount too low: {amount} (min 25000)")
+            
+            logger.warning(f"❌ No valid USDC transfer to {PAYTO_ADDRESS} found in tx {tx_hash}")
+            return False
+            
     except Exception as e:
-        logger.error(f"Facilitator error: {e}")
+        logger.error(f"❌ Verification error: {e}")
         return False
 
 
@@ -329,7 +396,8 @@ async def payable_endpoint(request: Request):
     if not payment:
         return create_402_response()
     
-    valid = await facilitator_verify(payment)
+    # Верификация через Alchemy RPC
+    valid = await verify_payment_onchain(payment)
     if not valid:
         return JSONResponse(
             {"error": "Payment verification failed"},
@@ -344,13 +412,14 @@ async def payable_endpoint(request: Request):
 # ============================================================
 @app.api_route("/", methods=["GET", "POST"])
 async def crypto_snapshot(request: Request):
-    # Проверяем платеж через фасилитатор
+    # Проверяем платеж
     payment = request.headers.get("x-payment") or request.headers.get("payment-signature")
     
     if not payment:
         return create_402_response()
     
-    valid = await facilitator_verify(payment)
+    # Верификация через Alchemy RPC
+    valid = await verify_payment_onchain(payment)
     if not valid:
         return JSONResponse(
             {"error": "Payment verification failed"},
@@ -501,7 +570,7 @@ async def root():
         "supported_pairs": "All Binance spot pairs (BTCUSDT, ETHUSDT, SOLUSDT, etc.)",
         "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "8-Factor Scoring"],
         "x402": True,
-        "settle": "CDP Facilitator",
+        "verify": "Alchemy RPC",
         "endpoints": {
             "/": "Main endpoint (POST/GET)",
             "/payable": "x402 verification endpoint (POST)",
