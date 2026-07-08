@@ -13,7 +13,6 @@ import base64
 import json
 import logging
 import sys
-import urllib.parse
 from typing import Optional, Any
 
 # ============================================================
