@@ -148,9 +148,12 @@ def create_402_response():
     logger.info("🔐 402 Payment Required sent")
     logger.info(f"📦 Payment config: {envelope[:200]}...")
     return Response(
-        content="Payment Required",
+        content=json.dumps({"error": "Payment header is required"}),  # <-- КЛЮЧЕВОЕ ИЗМЕНЕНИЕ!
         status_code=402,
-        headers={"payment-required": encoded_uri}
+        headers={
+            "payment-required": encoded_uri,
+            "content-type": "application/json"  # <-- ДОБАВЛЯЕМ
+        }
     )
 
 
