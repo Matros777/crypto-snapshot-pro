@@ -146,6 +146,7 @@ def create_402_response():
     encoded = base64.b64encode(envelope.encode('utf-8')).decode('utf-8')
     encoded_uri = urllib.parse.quote(encoded)
     logger.info("🔐 402 Payment Required sent")
+    logger.info(f"📦 Payment config: {envelope[:200]}...")
     return Response(
         content="Payment Required",
         status_code=402,
@@ -160,30 +161,46 @@ FACILITATOR_URL = "https://x402-facilitator-rnne.onrender.com"
 
 async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
     """Полная проверка платежа через свой фасилитатор"""
+    logger.info("🔍 Starting facilitator verification...")
+    logger.info(f"📥 Payment payload (first 100 chars): {payment_payload[:100]}...")
+    
     try:
+        # 1. Декодируем payload
         decoded = base64.b64decode(payment_payload).decode("utf-8")
+        logger.info(f"📄 Decoded payload: {decoded[:200]}...")
         payment_data = json.loads(decoded)
+        logger.info(f"✅ Payment data parsed successfully")
         
+        # 2. Извлекаем authorization
         authorization = payment_data.get("payload", {}).get("authorization", {})
+        logger.info(f"🔑 Authorization: {json.dumps(authorization, indent=2)[:300]}...")
         
         if not authorization:
             logger.error("❌ No authorization in payment payload")
             return False
         
+        # Проверяем получателя
         to_addr = authorization.get("to")
+        logger.info(f"📤 Recipient: {to_addr}")
+        logger.info(f"🎯 Expected: {PAYTO_ADDRESS}")
+        
         if to_addr.lower() != PAYTO_ADDRESS.lower():
             logger.warning(f"❌ Wrong recipient: {to_addr}")
             return False
         
+        # Проверяем сумму
         try:
             value = int(authorization.get("value", "0"))
         except:
             value = 0
         
+        logger.info(f"💰 Amount: {value} (min: {MIN_AMOUNT})")
+        
         if value < MIN_AMOUNT:
             logger.warning(f"❌ Amount too low: {value} (min {MIN_AMOUNT})")
             return False
         
+        # Проверяем временные метки
         current_time = int(time.time())
         
         try:
@@ -192,6 +209,8 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         except:
             valid_after = 0
             valid_before = 0
+        
+        logger.info(f"⏰ Valid after: {valid_after}, Valid before: {valid_before}, Current: {current_time}")
         
         if valid_after > 0 and current_time < valid_after:
             logger.warning(f"❌ Payment not yet valid (validAfter: {valid_after})")
@@ -203,6 +222,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         
         logger.info(f"✅ Authorization verified: {value} USDC to {to_addr}")
         
+        # 3. Формируем paymentRequirements
         payment_requirements = {
             "x402Version": 2,
             "resource": PAYMENT_CONFIG.get("resource"),
@@ -210,11 +230,17 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
             "domain": PAYMENT_CONFIG.get("domain")
         }
         
+        logger.info(f"📋 Payment requirements prepared")
+        
+        # 4. Формируем paymentPayload для фасилитатора
         payment_payload_data = {
             "x402Version": 2,
             "payload": payment_data.get("payload"),
             "extensions": payment_data.get("extensions", {})
         }
+        
+        # 5. Отправляем verify в фасилитатор
+        logger.info(f"🔄 Sending verify to facilitator: {FACILITATOR_URL}/verify")
         
         async with httpx.AsyncClient(timeout=20) as client:
             verify_response = await client.post(
@@ -226,16 +252,23 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
                 headers={"Content-Type": "application/json"}
             )
             
+            logger.info(f"📡 Verify response status: {verify_response.status_code}")
+            
             if verify_response.status_code != 200:
                 logger.warning(f"⚠️ Verification failed: {verify_response.status_code} - {verify_response.text}")
                 return False
             
             verify_data = verify_response.json()
+            logger.info(f"✅ Verify response: {json.dumps(verify_data, indent=2)[:300]}...")
+            
             if not verify_data.get("isValid", False):
                 logger.warning(f"⚠️ Invalid signature: {verify_data}")
                 return False
             
             logger.info("✅ Signature verified by facilitator")
+            
+            # 6. Отправляем settle в фасилитатор
+            logger.info(f"🔄 Sending settle to facilitator: {FACILITATOR_URL}/settle")
             
             settle_response = await client.post(
                 f"{FACILITATOR_URL}/settle",
@@ -246,6 +279,8 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
                 headers={"Content-Type": "application/json"}
             )
             
+            logger.info(f"📡 Settle response status: {settle_response.status_code}")
+            
             if settle_response.status_code != 200:
                 logger.warning(f"⚠️ Settle failed: {settle_response.status_code} - {settle_response.text}")
                 return False
@@ -255,6 +290,8 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
             
     except Exception as e:
         logger.error(f"❌ Facilitator error: {e}")
+        import traceback
+        logger.error(f"📚 Traceback: {traceback.format_exc()}")
         return False
 
 
@@ -454,17 +491,23 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
 # ============================================================
 @app.post("/payable")
 async def payable_endpoint(request: Request):
+    logger.info("📍 /payable endpoint called")
     payment = get_payment_header(request)
+    logger.info(f"🔑 Payment header: {payment}")
+    
     if not payment:
+        logger.info("❌ No payment header, returning 402")
         return create_402_response()
     
     valid = await verify_and_settle_with_facilitator(payment)
     if not valid:
+        logger.error("❌ Payment verification failed")
         return JSONResponse(
             {"error": "Payment verification failed"},
             status_code=402
         )
     
+    logger.info("✅ Payment verified and settled")
     return {"status": "ok", "message": "Payment verified and settled"}
 
 
@@ -475,41 +518,69 @@ async def payable_endpoint(request: Request):
 async def crypto_snapshot(request: Request):
     """SIGNAL ONLY AFTER FACILITATOR VERIFICATION"""
     
+    logger.info("=" * 60)
+    logger.info("📥 New request received")
+    
     # Логируем ВСЕ заголовки
-    logger.info(f"📋 ALL HEADERS: {dict(request.headers)}")
+    headers = dict(request.headers)
+    logger.info(f"📋 ALL HEADERS: {headers}")
+    
+    # Логируем метод и путь
+    logger.info(f"🔧 Method: {request.method}, Path: {request.url.path}")
     
     payment = get_payment_header(request)
     logger.info(f"🔑 Payment header: {payment}")
     
     if not payment:
-        return create_402_response()  # <-- ЭТО ИСПРАВЛЕНО!
+        logger.info("❌ No payment header found - returning 402")
+        return create_402_response()
+    
+    logger.info(f"✅ Payment header found: {payment[:50]}...")
+    
+    # Пытаемся декодировать payment для отладки
+    try:
+        decoded = base64.b64decode(payment).decode('utf-8')
+        logger.info(f"📄 Decoded payment: {decoded[:200]}...")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not decode payment: {e}")
     
     valid = await verify_and_settle_with_facilitator(payment)
     if not valid:
+        logger.error("❌ Payment verification failed by facilitator")
         return JSONResponse(
             {"error": "Payment verification failed by facilitator"},
             status_code=402
         )
     
+    logger.info("✅ Payment verified successfully, processing request...")
+    
     symbol = None
     if request.method == "POST":
         try:
             body = await request.json()
+            logger.info(f"📦 Request body: {body}")
         except:
+            logger.error("❌ Invalid JSON body")
             raise HTTPException(status_code=400, detail="Invalid JSON body")
         
         if "message" in body and isinstance(body["message"], dict):
             symbol = body["message"].get("content", "").strip()
+            logger.info(f"📝 Symbol from message.content: {symbol}")
         elif isinstance(body, dict) and "symbol" in body:
             symbol = body["symbol"].strip()
+            logger.info(f"📝 Symbol from body.symbol: {symbol}")
         elif "content" in body:
             symbol = body["content"].strip()
+            logger.info(f"📝 Symbol from body.content: {symbol}")
         elif "message" in body and isinstance(body["message"], str):
             symbol = body["message"].strip()
+            logger.info(f"📝 Symbol from body.message: {symbol}")
     else:
         symbol = request.query_params.get("symbol", "ETH")
+        logger.info(f"📝 Symbol from query param: {symbol}")
     
     if not symbol:
+        logger.info("❌ No symbol provided, returning help message")
         return AgentResponse(message={
             "role": "assistant",
             "content": "📊 CRYPTO SNAPSHOT PRO\n\nSend a symbol to analyze.\n\nExamples:\n• BTC\n• ETH\n• SOL\n• DOGE\n• XRP\n\nUsage: POST {\"symbol\": \"BTC\"} or GET ?symbol=BTC"
@@ -517,8 +588,10 @@ async def crypto_snapshot(request: Request):
     
     symbol = symbol.upper()
     symbol = f"{symbol}USDT" if "USDT" not in symbol else symbol
+    logger.info(f"🔄 Trading pair: {symbol}")
 
     try:
+        logger.info(f"📊 Fetching data for {symbol}...")
         ticker = await fetch_ticker(symbol)
         current_price = float(ticker.get("lastPrice", 0))
         change_24h = float(ticker.get("priceChangePercent", 0))
@@ -526,12 +599,14 @@ async def crypto_snapshot(request: Request):
         low_24h = float(ticker.get("lowPrice", 0))
 
         if current_price == 0:
+            logger.error(f"❌ Invalid price for {symbol}")
             raise HTTPException(status_code=400, detail=f"Invalid price for {symbol}")
 
         klines = await fetch_klines(symbol)
         closes = [k["close"] for k in klines]
         volumes = [k["volume"] for k in klines]
 
+        logger.info(f"📊 Calculating indicators for {symbol}...")
         rsi = calculate_rsi(closes, 14)
         ema20 = calculate_ema(closes[-20:], 20) if len(closes) >= 20 else closes[-1]
         ema50 = calculate_ema(closes[-50:], 50) if len(closes) >= 50 else closes[-1]
@@ -610,11 +685,15 @@ async def crypto_snapshot(request: Request):
 """
         result += "\n\n⚠️ Risk Disclosure: This is NOT financial advice. Always manage risk. Past performance does not guarantee future results."
         
+        logger.info(f"✅ Response generated successfully for {symbol}")
         return AgentResponse(message={"role": "assistant", "content": result})
 
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"❌ Error processing request: {e}")
+        import traceback
+        logger.error(f"📚 Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
