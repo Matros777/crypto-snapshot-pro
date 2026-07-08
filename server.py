@@ -46,7 +46,7 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION — ДОБАВЛЕН DOMAIN
+# x402 PAYMENT CONFIGURATION — ИСПРАВЛЕННЫЙ
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
@@ -62,15 +62,15 @@ PAYMENT_CONFIG = {
             "amount": "25000",
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
-            "maxTimeoutSeconds": 300,
-            "domain": {
-                "name": "USD Coin",
-                "version": "2",
-                "chainId": 8453,
-                "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-            }
+            "maxTimeoutSeconds": 300
         }
     ],
+    "domain": {
+        "name": "USD Coin",
+        "version": "2",
+        "chainId": 8453,
+        "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    },
     "extensions": {
         "bazaar": {
             "info": {
@@ -143,24 +143,19 @@ FACILITATOR_URL = "https://facilitator.xpay.sh"
 async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
     """Полная проверка платежа через XPay фасилитатор"""
     try:
-        # 1. Декодируем payload
         decoded = base64.b64decode(payment_payload).decode("utf-8")
         payment_data = json.loads(decoded)
         
-        # 2. Извлекаем authorization для дополнительной проверки
         authorization = payment_data.get("payload", {}).get("authorization", {})
-        
         if not authorization:
             logger.error("❌ No authorization in payment payload")
             return False
         
-        # Проверяем получателя
         to_addr = authorization.get("to")
         if to_addr.lower() != PAYTO_ADDRESS.lower():
             logger.warning(f"❌ Wrong recipient: {to_addr}")
             return False
         
-        # Проверяем сумму
         try:
             value = int(authorization.get("value", "0"))
         except:
@@ -170,15 +165,9 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
             logger.warning(f"❌ Amount too low: {value} (min {MIN_AMOUNT})")
             return False
         
-        # Проверяем временные метки
         current_time = int(time.time())
-        
-        try:
-            valid_after = int(authorization.get("validAfter", "0"))
-            valid_before = int(authorization.get("validBefore", "0"))
-        except:
-            valid_after = 0
-            valid_before = 0
+        valid_after = int(authorization.get("validAfter", "0") or 0)
+        valid_before = int(authorization.get("validBefore", "0") or 0)
         
         if valid_after > 0 and current_time < valid_after:
             logger.warning(f"❌ Payment not yet valid (validAfter: {valid_after})")
@@ -190,21 +179,18 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         
         logger.info(f"✅ Authorization verified: {value} USDC to {to_addr}")
         
-        # 3. Формируем paymentRequirements
         payment_requirements = {
             "x402Version": 2,
             "resource": PAYMENT_CONFIG.get("resource"),
             "accepts": PAYMENT_CONFIG.get("accepts")
         }
         
-        # 4. Формируем paymentPayload для фасилитатора
         payment_payload_data = {
             "x402Version": 2,
             "payload": payment_data.get("payload"),
             "extensions": payment_data.get("extensions", {})
         }
         
-        # 5. Отправляем verify в фасилитатор
         async with httpx.AsyncClient(timeout=20) as client:
             verify_response = await client.post(
                 f"{FACILITATOR_URL}/verify",
@@ -226,7 +212,6 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
             
             logger.info("✅ Signature verified by facilitator")
             
-            # 6. Отправляем settle в фасилитатор
             settle_response = await client.post(
                 f"{FACILITATOR_URL}/settle",
                 json={
