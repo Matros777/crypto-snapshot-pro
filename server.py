@@ -64,7 +64,7 @@ PAYMENT_CONFIG = {
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
             "maxTimeoutSeconds": 300,
-            "domain": {  # <-- ДОБАВЛЯЕМ СЮДА!
+            "domain": {
                 "name": "USD Coin",
                 "version": "2",
                 "chainId": 8453,
@@ -76,7 +76,7 @@ PAYMENT_CONFIG = {
             }
         }
     ],
-    "domain": {  # <-- И ОСТАВЛЯЕМ ЗДЕСЬ ТОЖЕ
+    "domain": {
         "name": "USD Coin",
         "version": "2",
         "chainId": 8453,
@@ -143,9 +143,7 @@ def get_payment_header(request: Request) -> Optional[str]:
 def create_402_response():
     """Возвращает 402 Payment Required с заголовком payment-required"""
     envelope = json.dumps(PAYMENT_CONFIG, separators=(',', ':'))
-    # Кодируем в base64
     encoded = base64.b64encode(envelope.encode('utf-8')).decode('utf-8')
-    # URI-кодируем для awal
     encoded_uri = urllib.parse.quote(encoded)
     logger.info("🔐 402 Payment Required sent")
     return Response(
@@ -163,24 +161,20 @@ FACILITATOR_URL = "https://x402-facilitator-rnne.onrender.com"
 async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
     """Полная проверка платежа через свой фасилитатор"""
     try:
-        # 1. Декодируем payload
         decoded = base64.b64decode(payment_payload).decode("utf-8")
         payment_data = json.loads(decoded)
         
-        # 2. Извлекаем authorization для дополнительной проверки
         authorization = payment_data.get("payload", {}).get("authorization", {})
         
         if not authorization:
             logger.error("❌ No authorization in payment payload")
             return False
         
-        # Проверяем получателя
         to_addr = authorization.get("to")
         if to_addr.lower() != PAYTO_ADDRESS.lower():
             logger.warning(f"❌ Wrong recipient: {to_addr}")
             return False
         
-        # Проверяем сумму
         try:
             value = int(authorization.get("value", "0"))
         except:
@@ -190,7 +184,6 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
             logger.warning(f"❌ Amount too low: {value} (min {MIN_AMOUNT})")
             return False
         
-        # Проверяем временные метки
         current_time = int(time.time())
         
         try:
@@ -210,7 +203,6 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         
         logger.info(f"✅ Authorization verified: {value} USDC to {to_addr}")
         
-        # 3. Формируем paymentRequirements
         payment_requirements = {
             "x402Version": 2,
             "resource": PAYMENT_CONFIG.get("resource"),
@@ -218,14 +210,12 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
             "domain": PAYMENT_CONFIG.get("domain")
         }
         
-        # 4. Формируем paymentPayload для фасилитатора
         payment_payload_data = {
             "x402Version": 2,
             "payload": payment_data.get("payload"),
             "extensions": payment_data.get("extensions", {})
         }
         
-        # 5. Отправляем verify в фасилитатор
         async with httpx.AsyncClient(timeout=20) as client:
             verify_response = await client.post(
                 f"{FACILITATOR_URL}/verify",
@@ -247,7 +237,6 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
             
             logger.info("✅ Signature verified by facilitator")
             
-            # 6. Отправляем settle в фасилитатор
             settle_response = await client.post(
                 f"{FACILITATOR_URL}/settle",
                 json={
@@ -493,8 +482,12 @@ async def crypto_snapshot(request: Request):
     logger.info(f"🔑 Payment header: {payment}")
     
     if not payment:
+        return create_402_response()  # <-- ЭТО ИСПРАВЛЕНО!
+    
+    valid = await verify_and_settle_with_facilitator(payment)
+    if not valid:
         return JSONResponse(
-            content={"message": "Payment required but no requirements provided"},
+            {"error": "Payment verification failed by facilitator"},
             status_code=402
         )
     
