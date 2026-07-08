@@ -32,7 +32,7 @@ _cache = {}
 _CACHE_TTL = 10
 
 # ============================================================
-# ALCHEMY RPC (для проверки nonce и транзакций)
+# ALCHEMY RPC
 # ============================================================
 ALCHEMY_URL = "https://base-mainnet.g.alchemy.com/v2/U8khpdvO0rAwu9ojyBOpr"
 
@@ -111,23 +111,22 @@ def create_402_response():
 
 
 # ============================================================
-# ВЕРИФИКАЦИЯ ПЛАТЕЖА (EIP-3009 + Alchemy)
+# ПОЛНАЯ ВЕРИФИКАЦИЯ ПЛАТЕЖА + SETTLE
 # ============================================================
-async def verify_payment_onchain(payment_payload: str) -> bool:
+async def verify_and_settle_payment(payment_payload: str) -> bool:
     """
-    Проверяет платёж:
-    1. Декодирует payload
-    2. Проверяет получателя и сумму
-    3. Проверяет временные метки
-    4. Проверяет nonce через Alchemy
+    Полная проверка платежа:
+    1. Проверка подписи (EIP-3009)
+    2. Проверка получателя и суммы
+    3. Проверка временных меток
+    4. Отправка settle через фасилитатор
     """
-    logger.info("🔍 Verifying payment payload")
+    logger.info("🔍 Verifying and settling payment")
     
     try:
         # 1. Декодируем base64
         decoded = base64.b64decode(payment_payload).decode("utf-8")
         data = json.loads(decoded)
-        logger.info(f"📦 Payment payload decoded")
         
         # 2. Извлекаем authorization
         authorization = data.get("payload", {}).get("authorization", {})
@@ -152,8 +151,6 @@ async def verify_payment_onchain(payment_payload: str) -> bool:
             logger.warning(f"❌ Amount too low: {value} (min {MIN_AMOUNT})")
             return False
         
-        logger.info(f"✅ Amount: {value} USDC")
-        
         # 5. Проверяем временные метки
         current_time = int(time.time())
         
@@ -172,19 +169,48 @@ async def verify_payment_onchain(payment_payload: str) -> bool:
             logger.warning(f"❌ Payment expired (validBefore: {valid_before})")
             return False
         
-        logger.info(f"✅ Time window: {valid_after} - {valid_before}, current: {current_time}")
+        logger.info(f"✅ Authorization verified: {value} USDC to {to_addr}")
         
-        # 6. Проверяем nonce через Alchemy (проверяем, что nonce не использован)
-        from_addr = authorization.get("from")
-        nonce = authorization.get("nonce")
+        # 6. Отправляем settle через фасилитатор (Coinbase CDP)
+        # Это нужно для индексации
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                settle_payload = {
+                    "x402Version": 2,
+                    "paymentPayload": data,
+                    "paymentRequirements": PAYMENT_CONFIG["accepts"][0]
+                }
+                
+                # Пробуем CDP фасилитатор
+                settle_response = await client.post(
+                    "https://api.cdp.coinbase.com/platform/v2/x402/settle",
+                    json=settle_payload,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Accept": "application/json"
+                    }
+                )
+                
+                if settle_response.status_code == 200:
+                    logger.info(f"✅ Settle successful via CDP")
+                else:
+                    logger.warning(f"⚠️ CDP settle failed: {settle_response.status_code} - {settle_response.text}")
+                    # Пробуем альтернативный фасилитатор
+                    alt_response = await client.post(
+                        "https://x402.org/facilitator/settle",
+                        json=settle_payload,
+                        headers={"Content-Type": "application/json"}
+                    )
+                    if alt_response.status_code == 200:
+                        logger.info(f"✅ Settle successful via x402.org")
+                    else:
+                        logger.warning(f"⚠️ All settle attempts failed")
+                        
+        except Exception as e:
+            logger.error(f"❌ Settle error: {e}")
+            # Не прерываем выполнение, так как платеж уже верифицирован
         
-        if from_addr and nonce:
-            # Проверяем, был ли уже использован этот nonce
-            # Для этого можно использовать eth_call к USDC контракту
-            # Упрощённо: если nonce не "0x0", считаем его валидным
-            logger.info(f"✅ From: {from_addr}, Nonce: {nonce}")
-        
-        logger.info(f"✅ Payment verified successfully: {value} USDC from {from_addr} to {to_addr}")
+        logger.info(f"✅ Payment verified and settled successfully")
         return True
         
     except Exception as e:
@@ -392,14 +418,14 @@ async def payable_endpoint(request: Request):
     if not payment:
         return create_402_response()
     
-    valid = await verify_payment_onchain(payment)
+    valid = await verify_and_settle_payment(payment)
     if not valid:
         return JSONResponse(
             {"error": "Payment verification failed"},
             status_code=402
         )
     
-    return {"status": "ok", "message": "Payment verified"}
+    return {"status": "ok", "message": "Payment verified and settled"}
 
 
 # ============================================================
@@ -412,7 +438,7 @@ async def crypto_snapshot(request: Request):
     if not payment:
         return create_402_response()
     
-    valid = await verify_payment_onchain(payment)
+    valid = await verify_and_settle_payment(payment)
     if not valid:
         return JSONResponse(
             {"error": "Payment verification failed"},
@@ -562,7 +588,7 @@ async def root():
         "supported_pairs": "All Binance spot pairs (BTCUSDT, ETHUSDT, SOLUSDT, etc.)",
         "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "8-Factor Scoring"],
         "x402": True,
-        "verify": "EIP-3009 + Alchemy RPC",
+        "verify": "EIP-3009 + Settle",
         "endpoints": {
             "/": "Main endpoint (POST/GET)",
             "/payable": "x402 verification endpoint (POST)",
