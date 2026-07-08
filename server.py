@@ -62,15 +62,15 @@ PAYMENT_CONFIG = {
             "amount": "25000",
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
-            "maxTimeoutSeconds": 300,
-            "domain": {
-                "name": "USD Coin",
-                "version": "2",
-                "chainId": 8453,
-                "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-            }
+            "maxTimeoutSeconds": 300
         }
     ],
+    "domain": {
+        "name": "USD Coin",
+        "version": "2",
+        "chainId": 8453,
+        "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    },
     "extensions": {
         "bazaar": {
             "info": {
@@ -125,8 +125,8 @@ def get_payment_header(request: Request) -> Optional[str]:
 
 def create_402_response():
     """Возвращает 402 Payment Required с заголовком payment-required"""
-    envelope = json.dumps(PAYMENT_CONFIG)
-    encoded = base64.b64encode(envelope.encode()).decode()
+    envelope = json.dumps(PAYMENT_CONFIG, separators=(',', ':'))
+    encoded = base64.b64encode(envelope.encode('utf-8')).decode('utf-8')
     logger.info("🔐 402 Payment Required sent")
     return Response(
         content="Payment Required",
