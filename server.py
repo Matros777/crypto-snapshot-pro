@@ -112,25 +112,31 @@ PAYMENT_CONFIG = {
 
 def get_payment_header(request: Request) -> Optional[str]:
     """Универсальный поиск платежного заголовка"""
+    # Сначала ищем Authorization (от awal)
+    auth = request.headers.get("authorization")
+    if auth:
+        auth = auth.strip()
+        if auth.lower().startswith("x402 "):
+            return auth[5:].strip()
+        elif auth.lower().startswith("l402 "):
+            return auth[5:].strip()
+        elif auth.lower().startswith("bearer "):
+            return auth[7:].strip()
+        return auth
+    
+    # Если нет Authorization, ищем другие заголовки
     possible_headers = [
         "x-payment",
         "payment-signature",
         "x-payment-proof",
-        "payment",
-        "authorization"
+        "payment"
     ]
     for header in possible_headers:
         val = request.headers.get(header)
         if val:
             val = val.strip()
-            if header.lower() == "authorization":
-                if val.lower().startswith("x402 "):
-                    return val[5:].strip()
-                elif val.lower().startswith("l402 "):
-                    return val[5:].strip()
-                elif val.lower().startswith("bearer "):
-                    return val[7:].strip()
             return val
+    
     return None
 
 
