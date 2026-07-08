@@ -46,7 +46,7 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION (ИСПРАВЛЕНА СХЕМА EIP-712)
+# x402 PAYMENT CONFIGURATION
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
@@ -63,7 +63,6 @@ PAYMENT_CONFIG = {
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
             "maxTimeoutSeconds": 300,
-            # === ОБЯЗАТЕЛЬНЫЕ ПАРАМЕТРЫ ДЛЯ ОФИЦИАЛЬНОГО КЛИЕНТА x402 ===
             "name": "USD Coin",
             "version": "2",
             "extra": {
@@ -148,7 +147,7 @@ def create_402_response():
 
 
 # ============================================================
-# FACILITATOR VERIFICATION
+# FACILITATOR VERIFICATION (ИСПРАВЛЕНА ПЕРЕДАЧА PAYLOAD)
 # ============================================================
 async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
     """Полная проверка и сеттлмент платежа через x402.org фасилитатор"""
@@ -193,13 +192,19 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
 
         logger.info(f"✅ Pre-check passed: {value} USDC to {to_addr}")
 
-        # Отправляем verify и settle в фасилитатор с оригинальными структурами данных
+        # =========================================================================
+        # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ:
+        # Фасилитатор ждет КОНКРЕТНЫЙ объект из массива accepts (где лежат scheme и network),
+        # а НЕ весь внешний PAYMENT_CONFIG!
+        # =========================================================================
+        target_requirement = PAYMENT_CONFIG["accepts"][0]
+
         async with httpx.AsyncClient(timeout=20.0) as client:
             verify_response = await client.post(
                 "https://x402.org/facilitator/verify",
                 json={
                     "paymentPayload": payment_data,
-                    "paymentRequirements": PAYMENT_CONFIG
+                    "paymentRequirements": target_requirement
                 },
                 headers={"Content-Type": "application/json"}
             )
@@ -219,7 +224,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
                 "https://x402.org/facilitator/settle",
                 json={
                     "paymentPayload": payment_data,
-                    "paymentRequirements": PAYMENT_CONFIG
+                    "paymentRequirements": target_requirement
                 },
                 headers={"Content-Type": "application/json"}
             )
