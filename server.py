@@ -125,10 +125,10 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
     try:
         # 1. Декодируем payload
         decoded = base64.b64decode(payment_payload).decode("utf-8")
-        data = json.loads(decoded)
+        payment_data = json.loads(decoded)
         
         # 2. Извлекаем authorization для дополнительной проверки
-        authorization = data.get("payload", {}).get("authorization", {})
+        authorization = payment_data.get("payload", {}).get("authorization", {})
         
         if not authorization:
             logger.error("❌ No authorization in payment payload")
@@ -170,42 +170,57 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         
         logger.info(f"✅ Authorization verified: {value} USDC to {to_addr}")
         
-        # 3. Отправляем verify в фасилитатор
+        # 3. Формируем paymentRequirements (весь PAYMENT_CONFIG)
+        payment_requirements = {
+            "x402Version": 2,
+            "resource": PAYMENT_CONFIG.get("resource"),
+            "accepts": PAYMENT_CONFIG.get("accepts"),
+            "domain": PAYMENT_CONFIG.get("domain")
+        }
+        
+        # 4. Формируем paymentPayload для фасилитатора
+        payment_payload_data = {
+            "x402Version": 2,
+            "payload": payment_data.get("payload"),
+            "extensions": payment_data.get("extensions", {}),
+            "resource": payment_data.get("resource", {}),
+            "accepted": payment_data.get("accepted", {})
+        }
+        
+        # 5. Отправляем verify в фасилитатор
         async with httpx.AsyncClient(timeout=20) as client:
             verify_response = await client.post(
                 "https://x402.org/facilitator/verify",
                 json={
-                    "x402Version": 2,
-                    "paymentPayload": data,
-                    "paymentRequirements": PAYMENT_CONFIG["accepts"][0]
+                    "paymentPayload": payment_payload_data,
+                    "paymentRequirements": payment_requirements
                 },
                 headers={"Content-Type": "application/json"}
             )
             
             if verify_response.status_code != 200:
-                logger.warning(f"⚠️ Verification failed: {verify_response.status_code}")
+                logger.warning(f"⚠️ Verification failed: {verify_response.status_code} - {verify_response.text}")
                 return False
             
             verify_data = verify_response.json()
             if not verify_data.get("isValid", False):
-                logger.warning("⚠️ Invalid signature")
+                logger.warning(f"⚠️ Invalid signature: {verify_data}")
                 return False
             
             logger.info("✅ Signature verified by facilitator")
             
-            # 4. Отправляем settle в фасилитатор
+            # 6. Отправляем settle в фасилитатор
             settle_response = await client.post(
                 "https://x402.org/facilitator/settle",
                 json={
-                    "x402Version": 2,
-                    "paymentPayload": data,
-                    "paymentRequirements": PAYMENT_CONFIG["accepts"][0]
+                    "paymentPayload": payment_payload_data,
+                    "paymentRequirements": payment_requirements
                 },
                 headers={"Content-Type": "application/json"}
             )
             
             if settle_response.status_code != 200:
-                logger.warning(f"⚠️ Settle failed: {settle_response.status_code}")
+                logger.warning(f"⚠️ Settle failed: {settle_response.status_code} - {settle_response.text}")
                 return False
             
             logger.info("✅ Payment verified and settled by facilitator")
