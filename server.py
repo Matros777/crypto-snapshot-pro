@@ -46,7 +46,7 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION
+# x402 PAYMENT CONFIGURATION (ФОРМАТ ДЛЯ XPAY)
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
@@ -62,11 +62,7 @@ PAYMENT_CONFIG = {
             "amount": "25000",
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
-            "maxTimeoutSeconds": 300,
-            "extra": {
-                "name": "USD Coin",
-                "version": "2"
-            }
+            "maxTimeoutSeconds": 300
         }
     ],
     "extensions": {
@@ -188,7 +184,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         
         logger.info(f"✅ Authorization verified: {value} USDC to {to_addr}")
         
-        # 3. Формируем paymentRequirements (КАК В ДОКУМЕНТАЦИИ XPAY)
+        # 3. Формируем paymentRequirements (ДЛЯ XPAY)
         payment_requirements = {
             "x402Version": 2,
             "resource": PAYMENT_CONFIG.get("resource"),
