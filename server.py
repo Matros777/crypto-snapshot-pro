@@ -46,7 +46,7 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION
+# x402 PAYMENT CONFIGURATION (ИСПРАВЛЕНА СХЕМА EIP-712)
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
@@ -63,6 +63,13 @@ PAYMENT_CONFIG = {
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
             "maxTimeoutSeconds": 300,
+            # === ОБЯЗАТЕЛЬНЫЕ ПАРАМЕТРЫ ДЛЯ ОФИЦИАЛЬНОГО КЛИЕНТА x402 ===
+            "name": "USD Coin",
+            "version": "2",
+            "extra": {
+                "name": "USD Coin",
+                "version": "2"
+            },
             "domain": {
                 "name": "USD Coin",
                 "version": "2",
@@ -112,7 +119,6 @@ def get_payment_header(request: Request) -> Optional[str]:
         val = request.headers.get(header)
         if val:
             val = val.strip()
-            # Очистка префиксов для заголовка Authorization (например, 'x402 <token>' или 'Bearer <token>')
             if header.lower() == "authorization":
                 if val.lower().startswith("x402 "):
                     return val[5:].strip()
@@ -147,16 +153,13 @@ def create_402_response():
 async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
     """Полная проверка и сеттлмент платежа через x402.org фасилитатор"""
     try:
-        # 1. Безопасный декодинг Base64 (устойчивый к отсутствию паддинга или URL-safe символам)
         try:
             padded_payload = payment_payload + '=' * (-len(payment_payload) % 4)
             decoded = base64.b64decode(padded_payload, altchars='-_').decode("utf-8")
             payment_data = json.loads(decoded)
         except Exception:
-            # Если передали уже сырой JSON без base64
             payment_data = json.loads(payment_payload)
 
-        # 2. Извлекаем authorization для предварительной валидации
         authorization = payment_data.get("payload", {}).get("authorization", {})
         if not authorization:
             logger.error("❌ No authorization in payment payload")
@@ -190,29 +193,13 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
 
         logger.info(f"✅ Pre-check passed: {value} USDC to {to_addr}")
 
-        # 3. Формируем требования
-        payment_requirements = {
-            "x402Version": 2,
-            "resource": PAYMENT_CONFIG.get("resource"),
-            "accepts": PAYMENT_CONFIG.get("accepts")
-        }
-
-        # 4. Формируем полезную нагрузку для фасилитатора
-        payment_payload_data = {
-            "x402Version": 2,
-            "payload": payment_data.get("payload"),
-            "extensions": payment_data.get("extensions", {}),
-            "resource": payment_data.get("resource", {}),
-            "accepted": payment_data.get("accepted", {})
-        }
-
-        # 5. Отправляем verify в фасилитатор
+        # Отправляем verify и settle в фасилитатор с оригинальными структурами данных
         async with httpx.AsyncClient(timeout=20.0) as client:
             verify_response = await client.post(
                 "https://x402.org/facilitator/verify",
                 json={
-                    "paymentPayload": payment_payload_data,
-                    "paymentRequirements": payment_requirements
+                    "paymentPayload": payment_data,
+                    "paymentRequirements": PAYMENT_CONFIG
                 },
                 headers={"Content-Type": "application/json"}
             )
@@ -228,12 +215,11 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
 
             logger.info("✅ Signature verified by facilitator")
 
-            # 6. Отправляем settle в фасилитатор
             settle_response = await client.post(
                 "https://x402.org/facilitator/settle",
                 json={
-                    "paymentPayload": payment_payload_data,
-                    "paymentRequirements": payment_requirements
+                    "paymentPayload": payment_data,
+                    "paymentRequirements": PAYMENT_CONFIG
                 },
                 headers={"Content-Type": "application/json"}
             )
