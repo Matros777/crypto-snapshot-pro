@@ -32,13 +32,14 @@ _cache = {}
 _CACHE_TTL = 10
 
 # ============================================================
-# ALCHEMY RPC (ПРЯМАЯ ВЕРИФИКАЦИЯ НА БЛОКЧЕЙНЕ)
+# ALCHEMY RPC
 # ============================================================
 ALCHEMY_URL = "https://base-mainnet.g.alchemy.com/v2/U8khpdvO0rAwu9ojyBOpr"
 
 # USDC контракт на Base
 USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 PAYTO_ADDRESS = "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3"
+MIN_AMOUNT = 25000  # 0.025 USDC
 
 
 class AgentResponse(BaseModel):
@@ -110,21 +111,54 @@ def create_402_response():
 
 
 # ============================================================
-# ALCHEMY ВЕРИФИКАЦИЯ ПЛАТЕЖА (ПРЯМО НА БЛОКЧЕЙНЕ)
+# ALCHEMY ВЕРИФИКАЦИЯ ПЛАТЕЖА
 # ============================================================
-async def verify_payment_onchain(tx_hash: str) -> bool:
+async def verify_payment_onchain(payment_payload: str) -> bool:
     """
-    Проверяет, что транзакция с указанным хешем:
-    1. Существует
-    2. Отправляет USDC на адрес агента (PAYTO_ADDRESS)
-    3. Сумма >= 0.025 USDC (25000 в 6 decimals)
+    Проверяет платёж через Alchemy RPC.
+    Извлекает хеш транзакции из x-payment payload и проверяет USDC-перевод.
     """
-    logger.info(f"🔍 Verifying transaction: {tx_hash}")
+    logger.info("🔍 Verifying payment payload via Alchemy")
     
     try:
+        # 1. Декодируем base64
+        decoded = base64.b64decode(payment_payload).decode("utf-8")
+        data = json.loads(decoded)
+        logger.info(f"📦 Payment payload decoded: {json.dumps(data, indent=2)[:200]}...")
+        
+        # 2. Извлекаем хеш транзакции (разные варианты структуры)
+        tx_hash = None
+        
+        # Вариант 1: payload.transactionHash
+        if "payload" in data and isinstance(data["payload"], dict):
+            tx_hash = data["payload"].get("transactionHash")
+        
+        # Вариант 2: transactionHash на верхнем уровне
+        if not tx_hash:
+            tx_hash = data.get("transactionHash")
+        
+        # Вариант 3: вложенный paymentSignature
+        if not tx_hash and "paymentSignature" in data:
+            tx_hash = data["paymentSignature"]
+        
+        # Вариант 4: если payload есть как строка
+        if not tx_hash and "payload" in data and isinstance(data["payload"], str):
+            try:
+                inner = json.loads(data["payload"])
+                tx_hash = inner.get("transactionHash")
+            except:
+                pass
+        
+        if not tx_hash:
+            logger.error("❌ No transaction hash found in payment payload")
+            logger.info(f"🔍 Available keys: {list(data.keys())}")
+            return False
+        
+        logger.info(f"🔍 Transaction hash: {tx_hash}")
+        
+        # 3. Проверяем транзакцию через Alchemy
         async with httpx.AsyncClient(timeout=20) as client:
-            # Получаем транзакцию по хешу
-            payload = {
+            rpc_payload = {
                 "id": "1",
                 "jsonrpc": "2.0",
                 "method": "eth_getTransactionReceipt",
@@ -133,7 +167,7 @@ async def verify_payment_onchain(tx_hash: str) -> bool:
             
             response = await client.post(
                 ALCHEMY_URL,
-                json=payload,
+                json=rpc_payload,
                 headers={"Content-Type": "application/json"}
             )
             
@@ -182,11 +216,11 @@ async def verify_payment_onchain(tx_hash: str) -> bool:
                         amount = int(amount_hex, 16)
                         
                         # Проверяем сумму (0.025 USDC = 25000 в 6 decimals)
-                        if amount >= 25000:
+                        if amount >= MIN_AMOUNT:
                             logger.info(f"✅ Payment verified: {amount} USDC to {to_address}")
                             return True
                         else:
-                            logger.warning(f"⚠️ Amount too low: {amount} (min 25000)")
+                            logger.warning(f"⚠️ Amount too low: {amount} (min {MIN_AMOUNT})")
             
             logger.warning(f"❌ No valid USDC transfer to {PAYTO_ADDRESS} found in tx {tx_hash}")
             return False
@@ -396,7 +430,6 @@ async def payable_endpoint(request: Request):
     if not payment:
         return create_402_response()
     
-    # Верификация через Alchemy RPC
     valid = await verify_payment_onchain(payment)
     if not valid:
         return JSONResponse(
@@ -412,13 +445,11 @@ async def payable_endpoint(request: Request):
 # ============================================================
 @app.api_route("/", methods=["GET", "POST"])
 async def crypto_snapshot(request: Request):
-    # Проверяем платеж
     payment = request.headers.get("x-payment") or request.headers.get("payment-signature")
     
     if not payment:
         return create_402_response()
     
-    # Верификация через Alchemy RPC
     valid = await verify_payment_onchain(payment)
     if not valid:
         return JSONResponse(
@@ -426,7 +457,6 @@ async def crypto_snapshot(request: Request):
             status_code=402
         )
     
-    # Определяем символ
     symbol = None
     
     if request.method == "POST":
