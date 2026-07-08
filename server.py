@@ -46,7 +46,7 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION — ИСПРАВЛЕННЫЙ
+# x402 PAYMENT CONFIGURATION
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
@@ -188,7 +188,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         
         logger.info(f"✅ Authorization verified: {value} USDC to {to_addr}")
         
-        # 3. Формируем paymentRequirements
+        # 3. Формируем paymentRequirements (КАК В ДОКУМЕНТАЦИИ XPAY)
         payment_requirements = {
             "x402Version": 2,
             "resource": PAYMENT_CONFIG.get("resource"),
@@ -199,9 +199,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         payment_payload_data = {
             "x402Version": 2,
             "payload": payment_data.get("payload"),
-            "extensions": payment_data.get("extensions", {}),
-            "resource": payment_data.get("resource", {}),
-            "accepted": payment_data.get("accepted", {})
+            "extensions": payment_data.get("extensions", {})
         }
         
         # 5. Отправляем verify в фасилитатор
@@ -465,18 +463,12 @@ async def payable_endpoint(request: Request):
 async def crypto_snapshot(request: Request):
     """SIGNAL ONLY AFTER FACILITATOR VERIFICATION"""
     
-    # Детальное логирование заголовков
-    logger.info("📋 REQUEST HEADERS:")
-    for key, value in request.headers.items():
-        logger.info(f"  {key}: {value}")
-    
     payment = get_payment_header(request)
-    logger.info(f"🔑 Payment header: {payment[:100] + '...' if payment and len(payment) > 100 else payment or 'MISSING'}")
+    logger.info(f"🔑 Payment header detected: {'YES' if payment else 'MISSING'}")
     
     if not payment:
         return create_402_response()
     
-    # ⚠️ CRITICAL: Must verify through facilitator
     valid = await verify_and_settle_with_facilitator(payment)
     if not valid:
         return JSONResponse(
@@ -484,9 +476,7 @@ async def crypto_snapshot(request: Request):
             status_code=402
         )
     
-    # ✅ Only proceed if facilitator verified
     symbol = None
-    
     if request.method == "POST":
         try:
             body = await request.json()
