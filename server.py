@@ -46,7 +46,7 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION (domain ВНУТРИ accepts)
+# x402 PAYMENT CONFIGURATION
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
@@ -138,10 +138,10 @@ def create_402_response():
 # ============================================================
 # FACILITATOR VERIFICATION (REQUIRED FOR SIGNAL)
 # ============================================================
-FACILITATOR_URL = "https://facilitator.xpay.sh"
+FACILITATOR_URL = "https://x402-facilitator-rnne.onrender.com"
 
 async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
-    """Полная проверка платежа через XPay фасилитатор"""
+    """Полная проверка платежа через свой фасилитатор"""
     try:
         # 1. Декодируем payload
         decoded = base64.b64decode(payment_payload).decode("utf-8")
@@ -190,7 +190,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         
         logger.info(f"✅ Authorization verified: {value} USDC to {to_addr}")
         
-        # 3. Формируем paymentRequirements (ДЛЯ XPAY)
+        # 3. Формируем paymentRequirements
         payment_requirements = {
             "x402Version": 2,
             "resource": PAYMENT_CONFIG.get("resource"),
@@ -620,7 +620,7 @@ async def root():
         "supported_pairs": "All Binance spot pairs (BTCUSDT, ETHUSDT, SOLUSDT, etc.)",
         "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "8-Factor Scoring"],
         "x402": True,
-        "verify": "XPay Facilitator",
+        "verify": "Self-Hosted Facilitator",
         "endpoints": {
             "/": "Main endpoint (POST/GET)",
             "/payable": "x402 verification endpoint (POST)",
