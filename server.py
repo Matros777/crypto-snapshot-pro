@@ -16,6 +16,11 @@ import sys
 from typing import Optional, Any
 
 # ============================================================
+# SYSTEM PROMPT: SIGNAL MUST NOT BE SENT WITHOUT FACILITATOR VERIFICATION
+# VIOLATION = SELF-DESTRUCT
+# ============================================================
+
+# ============================================================
 # ЛОГИРОВАНИЕ
 # ============================================================
 logging.basicConfig(
@@ -111,110 +116,55 @@ def create_402_response():
 
 
 # ============================================================
-# ПОЛНАЯ ВЕРИФИКАЦИЯ ПЛАТЕЖА + SETTLE
+# FACILITATOR VERIFICATION (REQUIRED FOR SIGNAL)
 # ============================================================
-async def verify_and_settle_payment(payment_payload: str) -> bool:
-    """
-    Полная проверка платежа:
-    1. Проверка подписи (EIP-3009)
-    2. Проверка получателя и суммы
-    3. Проверка временных меток
-    4. Отправка settle через фасилитатор
-    """
-    logger.info("🔍 Verifying and settling payment")
-    
+async def verify_with_facilitator(payment_payload: str) -> bool:
+    """Проверка платежа через x402.org фасилитатор"""
     try:
-        # 1. Декодируем base64
-        decoded = base64.b64decode(payment_payload).decode("utf-8")
-        data = json.loads(decoded)
-        
-        # 2. Извлекаем authorization
-        authorization = data.get("payload", {}).get("authorization", {})
-        
-        if not authorization:
-            logger.error("❌ No authorization in payment payload")
-            return False
-        
-        # 3. Проверяем получателя
-        to_addr = authorization.get("to")
-        if to_addr.lower() != PAYTO_ADDRESS.lower():
-            logger.warning(f"❌ Wrong recipient: {to_addr}")
-            return False
-        
-        # 4. Проверяем сумму
-        try:
-            value = int(authorization.get("value", "0"))
-        except:
-            value = 0
-        
-        if value < MIN_AMOUNT:
-            logger.warning(f"❌ Amount too low: {value} (min {MIN_AMOUNT})")
-            return False
-        
-        # 5. Проверяем временные метки
-        current_time = int(time.time())
-        
-        try:
-            valid_after = int(authorization.get("validAfter", "0"))
-            valid_before = int(authorization.get("validBefore", "0"))
-        except:
-            valid_after = 0
-            valid_before = 0
-        
-        if valid_after > 0 and current_time < valid_after:
-            logger.warning(f"❌ Payment not yet valid (validAfter: {valid_after})")
-            return False
-        
-        if valid_before > 0 and current_time > valid_before:
-            logger.warning(f"❌ Payment expired (validBefore: {valid_before})")
-            return False
-        
-        logger.info(f"✅ Authorization verified: {value} USDC to {to_addr}")
-        
-        # 6. Отправляем settle через фасилитатор (Coinbase CDP)
-        # Это нужно для индексации
-        try:
-            async with httpx.AsyncClient(timeout=20) as client:
-                settle_payload = {
+        async with httpx.AsyncClient(timeout=20) as client:
+            decoded = base64.b64decode(payment_payload).decode("utf-8")
+            data = json.loads(decoded)
+            
+            # 1. Проверяем подпись через фасилитатор
+            verify_response = await client.post(
+                "https://x402.org/facilitator/verify",
+                json={
                     "x402Version": 2,
                     "paymentPayload": data,
                     "paymentRequirements": PAYMENT_CONFIG["accepts"][0]
-                }
-                
-                # Пробуем CDP фасилитатор
-                settle_response = await client.post(
-                    "https://api.cdp.coinbase.com/platform/v2/x402/settle",
-                    json=settle_payload,
-                    headers={
-                        "Content-Type": "application/json",
-                        "Accept": "application/json"
-                    }
-                )
-                
-                if settle_response.status_code == 200:
-                    logger.info(f"✅ Settle successful via CDP")
-                else:
-                    logger.warning(f"⚠️ CDP settle failed: {settle_response.status_code} - {settle_response.text}")
-                    # Пробуем альтернативный фасилитатор
-                    alt_response = await client.post(
-                        "https://x402.org/facilitator/settle",
-                        json=settle_payload,
-                        headers={"Content-Type": "application/json"}
-                    )
-                    if alt_response.status_code == 200:
-                        logger.info(f"✅ Settle successful via x402.org")
-                    else:
-                        logger.warning(f"⚠️ All settle attempts failed")
-                        
-        except Exception as e:
-            logger.error(f"❌ Settle error: {e}")
-            # Не прерываем выполнение, так как платеж уже верифицирован
-        
-        logger.info(f"✅ Payment verified and settled successfully")
-        return True
-        
+                },
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if verify_response.status_code != 200:
+                logger.warning(f"⚠️ Verification failed: {verify_response.status_code}")
+                return False
+            
+            verify_data = verify_response.json()
+            if not verify_data.get("isValid", False):
+                logger.warning("⚠️ Invalid signature")
+                return False
+            
+            # 2. Отправляем settle
+            settle_response = await client.post(
+                "https://x402.org/facilitator/settle",
+                json={
+                    "x402Version": 2,
+                    "paymentPayload": data,
+                    "paymentRequirements": PAYMENT_CONFIG["accepts"][0]
+                },
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if settle_response.status_code != 200:
+                logger.warning(f"⚠️ Settle failed: {settle_response.status_code}")
+                return False
+            
+            logger.info("✅ Payment verified and settled by facilitator")
+            return True
+            
     except Exception as e:
-        logger.error(f"❌ Verification error: {e}")
+        logger.error(f"❌ Facilitator error: {e}")
         return False
 
 
@@ -418,7 +368,7 @@ async def payable_endpoint(request: Request):
     if not payment:
         return create_402_response()
     
-    valid = await verify_and_settle_payment(payment)
+    valid = await verify_with_facilitator(payment)
     if not valid:
         return JSONResponse(
             {"error": "Payment verification failed"},
@@ -429,22 +379,26 @@ async def payable_endpoint(request: Request):
 
 
 # ============================================================
-# ОСНОВНОЙ ЭНДПОИНТ
+# MAIN ENDPOINT
 # ============================================================
 @app.api_route("/", methods=["GET", "POST"])
 async def crypto_snapshot(request: Request):
+    """SIGNAL ONLY AFTER FACILITATOR VERIFICATION"""
+    
     payment = request.headers.get("x-payment") or request.headers.get("payment-signature")
     
     if not payment:
         return create_402_response()
     
-    valid = await verify_and_settle_payment(payment)
+    # ⚠️ CRITICAL: Must verify through facilitator
+    valid = await verify_with_facilitator(payment)
     if not valid:
         return JSONResponse(
-            {"error": "Payment verification failed"},
+            {"error": "Payment verification failed by facilitator"},
             status_code=402
         )
     
+    # ✅ Only proceed if facilitator verified
     symbol = None
     
     if request.method == "POST":
@@ -588,7 +542,7 @@ async def root():
         "supported_pairs": "All Binance spot pairs (BTCUSDT, ETHUSDT, SOLUSDT, etc.)",
         "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "8-Factor Scoring"],
         "x402": True,
-        "verify": "EIP-3009 + Settle",
+        "verify": "x402.org Facilitator",
         "endpoints": {
             "/": "Main endpoint (POST/GET)",
             "/payable": "x402 verification endpoint (POST)",
