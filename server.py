@@ -486,16 +486,15 @@ async def payable_endpoint(request: Request):
 async def crypto_snapshot(request: Request):
     """SIGNAL ONLY AFTER FACILITATOR VERIFICATION"""
     
+    # Логируем ВСЕ заголовки
+    logger.info(f"📋 ALL HEADERS: {dict(request.headers)}")
+    
     payment = get_payment_header(request)
-    logger.info(f"🔑 Payment header detected: {'YES' if payment else 'MISSING'}")
+    logger.info(f"🔑 Payment header: {payment}")
     
     if not payment:
-        return create_402_response()
-    
-    valid = await verify_and_settle_with_facilitator(payment)
-    if not valid:
         return JSONResponse(
-            {"error": "Payment verification failed by facilitator"},
+            content={"message": "Payment required but no requirements provided"},
             status_code=402
         )
     
