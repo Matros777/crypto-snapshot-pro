@@ -16,11 +16,6 @@ import sys
 from typing import Optional, Any
 
 # ============================================================
-# SYSTEM PROMPT: SIGNAL MUST NOT BE SENT WITHOUT FACILITATOR VERIFICATION
-# VIOLATION = SELF-DESTRUCT
-# ============================================================
-
-# ============================================================
 # ЛОГИРОВАНИЕ
 # ============================================================
 logging.basicConfig(
@@ -37,11 +32,10 @@ _cache = {}
 _CACHE_TTL = 10
 
 # ============================================================
-# ALCHEMY RPC
+# ALCHEMY RPC & CONTRACTS
 # ============================================================
 ALCHEMY_URL = "https://base-mainnet.g.alchemy.com/v2/U8khpdvO0rAwu9ojyBOpr"
 
-# USDC контракт на Base
 USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 PAYTO_ADDRESS = "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3"
 MIN_AMOUNT = 25000  # 0.025 USDC
@@ -52,7 +46,7 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION — ИСПРАВЛЕННЫЙ
+# x402 PAYMENT CONFIGURATION
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
@@ -105,79 +99,105 @@ PAYMENT_CONFIG = {
 }
 
 
+def get_payment_header(request: Request) -> Optional[str]:
+    """Универсальный поиск токена оплаты во всех возможных заголовках x402/L402"""
+    possible_headers = [
+        "x-payment",
+        "payment-signature",
+        "x-payment-proof",
+        "payment",
+        "authorization"
+    ]
+    for header in possible_headers:
+        val = request.headers.get(header)
+        if val:
+            val = val.strip()
+            # Очистка префиксов для заголовка Authorization (например, 'x402 <token>' или 'Bearer <token>')
+            if header.lower() == "authorization":
+                if val.lower().startswith("x402 "):
+                    return val[5:].strip()
+                elif val.lower().startswith("l402 "):
+                    return val[5:].strip()
+                elif val.lower().startswith("bearer "):
+                    return val[7:].strip()
+            return val
+    return None
+
+
 def create_402_response():
-    """Возвращает 402 Payment Required с заголовком payment-required"""
+    """Возвращает 402 Payment Required с полным набором стандартных заголовков"""
     envelope = json.dumps(PAYMENT_CONFIG)
     encoded = base64.b64encode(envelope.encode()).decode()
-    logger.info("🔐 402 Payment Required sent")
+    logger.info("🔐 402 Payment Required sent to client")
     return Response(
-        content="Payment Required",
+        content=json.dumps({"error": "Payment Required", "x402": PAYMENT_CONFIG}),
         status_code=402,
-        headers={"payment-required": encoded}
+        media_type="application/json",
+        headers={
+            "payment-required": encoded,
+            "x-payment-required": encoded,
+            "www-authenticate": f"x402 {encoded}"
+        }
     )
 
 
 # ============================================================
-# FACILITATOR VERIFICATION (REQUIRED FOR SIGNAL)
+# FACILITATOR VERIFICATION
 # ============================================================
 async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
-    """Полная проверка платежа через x402.org фасилитатор"""
+    """Полная проверка и сеттлмент платежа через x402.org фасилитатор"""
     try:
-        # 1. Декодируем payload
-        decoded = base64.b64decode(payment_payload).decode("utf-8")
-        payment_data = json.loads(decoded)
-        
-        # 2. Извлекаем authorization для дополнительной проверки
+        # 1. Безопасный декодинг Base64 (устойчивый к отсутствию паддинга или URL-safe символам)
+        try:
+            padded_payload = payment_payload + '=' * (-len(payment_payload) % 4)
+            decoded = base64.b64decode(padded_payload, altchars='-_').decode("utf-8")
+            payment_data = json.loads(decoded)
+        except Exception:
+            # Если передали уже сырой JSON без base64
+            payment_data = json.loads(payment_payload)
+
+        # 2. Извлекаем authorization для предварительной валидации
         authorization = payment_data.get("payload", {}).get("authorization", {})
-        
         if not authorization:
             logger.error("❌ No authorization in payment payload")
             return False
-        
-        # Проверяем получателя
-        to_addr = authorization.get("to")
+
+        to_addr = authorization.get("to", "")
         if to_addr.lower() != PAYTO_ADDRESS.lower():
             logger.warning(f"❌ Wrong recipient: {to_addr}")
             return False
-        
-        # Проверяем сумму
+
         try:
             value = int(authorization.get("value", "0"))
-        except:
+        except (ValueError, TypeError):
             value = 0
-        
+
         if value < MIN_AMOUNT:
             logger.warning(f"❌ Amount too low: {value} (min {MIN_AMOUNT})")
             return False
-        
-        # Проверяем временные метки
+
         current_time = int(time.time())
-        
-        try:
-            valid_after = int(authorization.get("validAfter", "0"))
-            valid_before = int(authorization.get("validBefore", "0"))
-        except:
-            valid_after = 0
-            valid_before = 0
-        
+        valid_after = int(authorization.get("validAfter", 0) or 0)
+        valid_before = int(authorization.get("validBefore", 0) or 0)
+
         if valid_after > 0 and current_time < valid_after:
             logger.warning(f"❌ Payment not yet valid (validAfter: {valid_after})")
             return False
-        
+
         if valid_before > 0 and current_time > valid_before:
             logger.warning(f"❌ Payment expired (validBefore: {valid_before})")
             return False
-        
-        logger.info(f"✅ Authorization verified: {value} USDC to {to_addr}")
-        
-        # 3. Формируем paymentRequirements
+
+        logger.info(f"✅ Pre-check passed: {value} USDC to {to_addr}")
+
+        # 3. Формируем требования
         payment_requirements = {
             "x402Version": 2,
             "resource": PAYMENT_CONFIG.get("resource"),
             "accepts": PAYMENT_CONFIG.get("accepts")
         }
-        
-        # 4. Формируем paymentPayload для фасилитатора
+
+        # 4. Формируем полезную нагрузку для фасилитатора
         payment_payload_data = {
             "x402Version": 2,
             "payload": payment_data.get("payload"),
@@ -185,9 +205,9 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
             "resource": payment_data.get("resource", {}),
             "accepted": payment_data.get("accepted", {})
         }
-        
+
         # 5. Отправляем verify в фасилитатор
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with httpx.AsyncClient(timeout=20.0) as client:
             verify_response = await client.post(
                 "https://x402.org/facilitator/verify",
                 json={
@@ -196,18 +216,18 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
                 },
                 headers={"Content-Type": "application/json"}
             )
-            
+
             if verify_response.status_code != 200:
-                logger.warning(f"⚠️ Verification failed: {verify_response.status_code} - {verify_response.text}")
+                logger.warning(f"⚠️ Verification failed HTTP {verify_response.status_code}: {verify_response.text}")
                 return False
-            
+
             verify_data = verify_response.json()
             if not verify_data.get("isValid", False):
                 logger.warning(f"⚠️ Invalid signature: {verify_data}")
                 return False
-            
+
             logger.info("✅ Signature verified by facilitator")
-            
+
             # 6. Отправляем settle в фасилитатор
             settle_response = await client.post(
                 "https://x402.org/facilitator/settle",
@@ -217,23 +237,22 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
                 },
                 headers={"Content-Type": "application/json"}
             )
-            
+
             if settle_response.status_code != 200:
-                logger.warning(f"⚠️ Settle failed: {settle_response.status_code} - {settle_response.text}")
+                logger.warning(f"⚠️ Settle failed HTTP {settle_response.status_code}: {settle_response.text}")
                 return False
-            
+
             logger.info("✅ Payment verified and settled by facilitator")
             return True
-            
+
     except Exception as e:
-        logger.error(f"❌ Facilitator error: {e}")
+        logger.error(f"❌ Facilitator exception: {e}")
         return False
 
 
 # ============================================================
 # 8-ФАКТОРНЫЙ АНАЛИЗ
 # ============================================================
-
 def calculate_rsi(closes: list[float], period: int = 14) -> float:
     if len(closes) < period + 1:
         return 50.0
@@ -252,7 +271,7 @@ def calculate_rsi(closes: list[float], period: int = 14) -> float:
 
 def calculate_ema(prices: list[float], period: int) -> float:
     if not prices:
-        return 0
+        return 0.0
     multiplier = 2 / (period + 1)
     ema = prices[0]
     for price in prices[1:]:
@@ -312,11 +331,11 @@ def calculate_pivot_points(high: float, low: float, close: float) -> dict:
 
 
 def get_signal_from_factors(rsi: float, price_ema20: float, price_ema50: float,
-                           volume_ratio: float, high_low_range: float,
-                           macd: float, macd_signal: float, macd_hist: float,
-                           bb_upper: float, bb_middle: float, bb_lower: float,
-                           rsi_divergence: str, pivot: dict) -> tuple[str, str, int, int]:
-    long_score, short_score = 0, 0
+                            volume_ratio: float, high_low_range: float,
+                            macd: float, macd_signal: float, macd_hist: float,
+                            bb_upper: float, bb_middle: float, bb_lower: float,
+                            rsi_divergence: str, pivot: dict) -> tuple[str, str, float, float]:
+    long_score, short_score = 0.0, 0.0
     if rsi < 30:
         long_score += 2
     elif rsi > 70:
@@ -325,40 +344,48 @@ def get_signal_from_factors(rsi: float, price_ema20: float, price_ema50: float,
         long_score += 1
     elif rsi > 60:
         short_score += 1
+        
     if price_ema20 > price_ema50:
         long_score += 1
     else:
         short_score += 1
+        
     if macd > macd_signal and macd_hist > 0:
         long_score += 1
     elif macd < macd_signal and macd_hist < 0:
         short_score += 1
+        
     if bb_upper > 0 and bb_lower > 0:
         bb_position = (bb_middle - bb_lower) / (bb_upper - bb_lower) if bb_upper != bb_lower else 0.5
         if bb_position < 0.2:
             long_score += 1
         elif bb_position > 0.8:
             short_score += 1
+            
     if volume_ratio > 1.5:
         if long_score > short_score:
             long_score += 1
         else:
             short_score += 1
+            
     if rsi_divergence == 'bullish':
         long_score += 1
     elif rsi_divergence == 'bearish':
         short_score += 1
+        
     if high_low_range > 0.03:
         if long_score > short_score:
             long_score += 1
         else:
             short_score += 1
+            
     if pivot:
         current_price = bb_middle
         if current_price > pivot['pivot']:
             long_score += 0.5
         else:
             short_score += 0.5
+            
     if long_score >= 4:
         return "LONG", "🚀 Strong Bullish Setup", long_score, short_score
     elif short_score >= 4:
@@ -408,15 +435,16 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
         if response.status_code != 200:
             raise HTTPException(status_code=400, detail=f"Binance API error: {response.text}")
         data = response.json()
-        klines = []
-        for k in data:
-            klines.append({
+        klines = [
+            {
                 "close": float(k[4]),
                 "high": float(k[2]),
                 "low": float(k[3]),
                 "volume": float(k[5]),
                 "time": k[0]
-            })
+            }
+            for k in data
+        ]
         _cache[cache_key] = {"data": klines, "time": now}
         return klines
 
@@ -426,7 +454,7 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
 # ============================================================
 @app.post("/payable")
 async def payable_endpoint(request: Request):
-    payment = request.headers.get("x-payment") or request.headers.get("payment-signature")
+    payment = get_payment_header(request)
     if not payment:
         return create_402_response()
     
@@ -447,18 +475,12 @@ async def payable_endpoint(request: Request):
 async def crypto_snapshot(request: Request):
     """SIGNAL ONLY AFTER FACILITATOR VERIFICATION"""
     
-    # Детальное логирование заголовков
-    logger.info("📋 REQUEST HEADERS:")
-    for key, value in request.headers.items():
-        logger.info(f"  {key}: {value}")
-    
-    payment = request.headers.get("x-payment") or request.headers.get("payment-signature")
-    logger.info(f"🔑 Payment header: {payment[:100] + '...' if payment and len(payment) > 100 else payment or 'MISSING'}")
+    payment = get_payment_header(request)
+    logger.info(f"🔑 Payment header detected: {'YES' if payment else 'MISSING'}")
     
     if not payment:
         return create_402_response()
     
-    # ⚠️ CRITICAL: Must verify through facilitator
     valid = await verify_and_settle_with_facilitator(payment)
     if not valid:
         return JSONResponse(
@@ -466,13 +488,11 @@ async def crypto_snapshot(request: Request):
             status_code=402
         )
     
-    # ✅ Only proceed if facilitator verified
     symbol = None
-    
     if request.method == "POST":
         try:
             body = await request.json()
-        except:
+        except Exception:
             raise HTTPException(status_code=400, detail="Invalid JSON body")
         
         if "message" in body and isinstance(body["message"], dict):
@@ -480,7 +500,7 @@ async def crypto_snapshot(request: Request):
         elif isinstance(body, dict) and "symbol" in body:
             symbol = body["symbol"].strip()
         elif "content" in body:
-            symbol = body["content"].strip()
+            symbol = str(body["content"]).strip()
         elif "message" in body and isinstance(body["message"], str):
             symbol = body["message"].strip()
     else:
@@ -592,28 +612,10 @@ async def crypto_snapshot(request: Request):
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"❌ Internal calculation error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "crypto-snapshot-pro"}
-
-
-@app.get("/")
-async def root():
-    return {
-        "service": "Crypto Snapshot Pro x402 Agent",
-        "agentId": "3613",
-        "version": "3.2.0",
-        "data_source": "Binance Public API",
-        "supported_pairs": "All Binance spot pairs (BTCUSDT, ETHUSDT, SOLUSDT, etc.)",
-        "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "8-Factor Scoring"],
-        "x402": True,
-        "verify": "x402.org Facilitator",
-        "endpoints": {
-            "/": "Main endpoint (POST/GET)",
-            "/payable": "x402 verification endpoint (POST)",
-            "/health": "Health check (GET)",
-        }
-    }
