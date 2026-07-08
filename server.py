@@ -120,14 +120,58 @@ def create_402_response():
 # ============================================================
 # FACILITATOR VERIFICATION (REQUIRED FOR SIGNAL)
 # ============================================================
-async def verify_with_facilitator(payment_payload: str) -> bool:
-    """Проверка платежа через x402.org фасилитатор"""
+async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
+    """Полная проверка платежа через x402.org фасилитатор"""
     try:
+        # 1. Декодируем payload
+        decoded = base64.b64decode(payment_payload).decode("utf-8")
+        data = json.loads(decoded)
+        
+        # 2. Извлекаем authorization для дополнительной проверки
+        authorization = data.get("payload", {}).get("authorization", {})
+        
+        if not authorization:
+            logger.error("❌ No authorization in payment payload")
+            return False
+        
+        # Проверяем получателя
+        to_addr = authorization.get("to")
+        if to_addr.lower() != PAYTO_ADDRESS.lower():
+            logger.warning(f"❌ Wrong recipient: {to_addr}")
+            return False
+        
+        # Проверяем сумму
+        try:
+            value = int(authorization.get("value", "0"))
+        except:
+            value = 0
+        
+        if value < MIN_AMOUNT:
+            logger.warning(f"❌ Amount too low: {value} (min {MIN_AMOUNT})")
+            return False
+        
+        # Проверяем временные метки
+        current_time = int(time.time())
+        
+        try:
+            valid_after = int(authorization.get("validAfter", "0"))
+            valid_before = int(authorization.get("validBefore", "0"))
+        except:
+            valid_after = 0
+            valid_before = 0
+        
+        if valid_after > 0 and current_time < valid_after:
+            logger.warning(f"❌ Payment not yet valid (validAfter: {valid_after})")
+            return False
+        
+        if valid_before > 0 and current_time > valid_before:
+            logger.warning(f"❌ Payment expired (validBefore: {valid_before})")
+            return False
+        
+        logger.info(f"✅ Authorization verified: {value} USDC to {to_addr}")
+        
+        # 3. Отправляем verify в фасилитатор
         async with httpx.AsyncClient(timeout=20) as client:
-            decoded = base64.b64decode(payment_payload).decode("utf-8")
-            data = json.loads(decoded)
-            
-            # 1. Проверяем подпись через фасилитатор
             verify_response = await client.post(
                 "https://x402.org/facilitator/verify",
                 json={
@@ -147,7 +191,9 @@ async def verify_with_facilitator(payment_payload: str) -> bool:
                 logger.warning("⚠️ Invalid signature")
                 return False
             
-            # 2. Отправляем settle
+            logger.info("✅ Signature verified by facilitator")
+            
+            # 4. Отправляем settle в фасилитатор
             settle_response = await client.post(
                 "https://x402.org/facilitator/settle",
                 json={
@@ -370,7 +416,7 @@ async def payable_endpoint(request: Request):
     if not payment:
         return create_402_response()
     
-    valid = await verify_with_facilitator(payment)
+    valid = await verify_and_settle_with_facilitator(payment)
     if not valid:
         return JSONResponse(
             {"error": "Payment verification failed"},
@@ -393,7 +439,7 @@ async def crypto_snapshot(request: Request):
         return create_402_response()
     
     # ⚠️ CRITICAL: Must verify through facilitator
-    valid = await verify_with_facilitator(payment)
+    valid = await verify_and_settle_with_facilitator(payment)
     if not valid:
         return JSONResponse(
             {"error": "Payment verification failed by facilitator"},
