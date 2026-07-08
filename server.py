@@ -13,6 +13,7 @@ import base64
 import json
 import logging
 import sys
+import urllib.parse
 from typing import Optional, Any
 
 # ============================================================
@@ -136,12 +137,15 @@ def get_payment_header(request: Request) -> Optional[str]:
 def create_402_response():
     """Возвращает 402 Payment Required с заголовком payment-required"""
     envelope = json.dumps(PAYMENT_CONFIG, separators=(',', ':'))
+    # Кодируем в base64
     encoded = base64.b64encode(envelope.encode('utf-8')).decode('utf-8')
+    # URI-кодируем для awal
+    encoded_uri = urllib.parse.quote(encoded)
     logger.info("🔐 402 Payment Required sent")
     return Response(
         content="Payment Required",
         status_code=402,
-        headers={"payment-required": encoded}
+        headers={"payment-required": encoded_uri}
     )
 
 
