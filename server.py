@@ -105,12 +105,12 @@ PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com",
-        "description": "Real-time crypto market analysis using 8-factor scoring. Price: $0.025 per request.",
+        "description": "Crypto analysis. Price: $0.025",
         "mimeType": "application/json"
     },
     "accepts": [
         {
-            "scheme": "exact",
+            "scheme": "v2-eip155-exact",  # ← ИЗМЕНЕНИЕ
             "network": "eip155:8453",
             "amount": "25000",
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -127,7 +127,8 @@ PAYMENT_CONFIG = {
                 "version": "2"
             }
         }
-    ],
+    ]
+},
     "extensions": {
         "bazaar": {
             "info": {
