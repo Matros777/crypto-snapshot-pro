@@ -56,7 +56,6 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
     """Полная проверка платежа через OpenFacilitator"""
     logger.info("🔍 Starting facilitator verification...")
     
-    # Декодируем base64 в объект
     try:
         payment_data = json.loads(base64.b64decode(payment_payload).decode('utf-8'))
         logger.info("✅ Payment payload decoded successfully")
@@ -158,10 +157,10 @@ def create_402_response():
 
 
 # ============================================================
-# CoinGecko API функции (бесплатно, 10-30 запросов в минуту)
+# CoinGecko API функции - ТОЛЬКО РЕАЛЬНЫЕ ДАННЫЕ, БЕЗ ФОЛБЭКА!
 # ============================================================
 async def fetch_ticker(symbol: str) -> dict:
-    """Получение данных через CoinGecko"""
+    """Получение данных через CoinGecko - ТОЛЬКО РЕАЛЬНЫЕ ДАННЫЕ!"""
     cache_key = f"ticker_{symbol}"
     now = time.time()
     if cache_key in _cache and now - _cache[cache_key]["time"] < _CACHE_TTL:
@@ -208,13 +207,14 @@ async def fetch_ticker(symbol: str) -> dict:
             )
             
             if response.status_code != 200:
-                logger.warning(f"⚠️ CoinGecko error: {response.status_code}")
-                return _get_fallback_data(symbol)
+                logger.error(f"❌ CoinGecko error: {response.status_code} - {response.text}")
+                # НЕ ВОЗВРАЩАЕМ ФОЛБЭК! Возвращаем ошибку.
+                raise HTTPException(status_code=503, detail="Market data unavailable")
             
             data = response.json()
             if coin_id not in data:
-                logger.warning(f"⚠️ Symbol {symbol} not found in CoinGecko")
-                return _get_fallback_data(symbol)
+                logger.error(f"❌ Symbol {symbol} not found in CoinGecko")
+                raise HTTPException(status_code=404, detail=f"Symbol {symbol} not found")
             
             coin_data = data[coin_id]
             
@@ -223,40 +223,25 @@ async def fetch_ticker(symbol: str) -> dict:
                 "change": coin_data.get("usd_24h_change", 0),
                 "high": coin_data.get("usd_24h_high", 0),
                 "low": coin_data.get("usd_24h_low", 0),
-                "volume": 0,  # CoinGecko simple price не дает объем
+                "volume": 0,
                 "time": time.time()
             }
+            
+            if result["price"] == 0:
+                raise HTTPException(status_code=503, detail="Invalid price data")
             
             _cache[cache_key] = {"data": result, "time": now}
             return result
             
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ CoinGecko error: {e}")
-        return _get_fallback_data(symbol)
-
-
-def _get_fallback_data(symbol: str) -> dict:
-    """Запасные данные если API недоступен"""
-    base_prices = {
-        "BTCUSDT": 60000,
-        "ETHUSDT": 3000,
-        "SOLUSDT": 150,
-        "DOGEUSDT": 0.12,
-        "XRPUSDT": 0.5
-    }
-    price = base_prices.get(symbol, 100)
-    return {
-        "price": price,
-        "change": 0,
-        "high": price * 1.02,
-        "low": price * 0.98,
-        "volume": 0,
-        "time": time.time()
-    }
+        raise HTTPException(status_code=503, detail="Market data unavailable")
 
 
 async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> list[dict]:
-    """Получение исторических данных через CoinGecko"""
+    """Получение исторических данных через CoinGecko - ТОЛЬКО РЕАЛЬНЫЕ ДАННЫЕ!"""
     cache_key = f"klines_{symbol}_{interval}_{limit}"
     now = time.time()
     if cache_key in _cache and now - _cache[cache_key]["time"] < _CACHE_TTL:
@@ -284,13 +269,14 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
             )
             
             if response.status_code != 200:
-                return _generate_fallback_klines(symbol)
+                logger.error(f"❌ CoinGecko klines error: {response.status_code}")
+                raise HTTPException(status_code=503, detail="Historical data unavailable")
             
             data = response.json()
             prices = data.get("prices", [])
             
-            if not prices:
-                return _generate_fallback_klines(symbol)
+            if not prices or len(prices) < 10:
+                raise HTTPException(status_code=503, detail="Insufficient historical data")
             
             klines = []
             for i, p in enumerate(prices):
@@ -302,30 +288,15 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
                     'time': int(p[0])
                 })
             
-            # Берем последние limit штук
             klines = klines[-limit:] if len(klines) > limit else klines
             _cache[cache_key] = {"data": klines, "time": now}
             return klines
             
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ CoinGecko klines error: {e}")
-        return _generate_fallback_klines(symbol)
-
-
-def _generate_fallback_klines(symbol: str) -> list:
-    """Генерирует тестовые данные для klines"""
-    base_price = 60000 if "BTC" in symbol else 3000 if "ETH" in symbol else 150
-    klines = []
-    for i in range(50):
-        price = base_price * (1 + (i - 25) * 0.002)
-        klines.append({
-            'close': price,
-            'high': price * 1.01,
-            'low': price * 0.99,
-            'volume': 1000000,
-            'time': int(time.time() * 1000) - (50 - i) * 86400000
-        })
-    return klines
+        raise HTTPException(status_code=503, detail="Historical data unavailable")
 
 
 # ============================================================
@@ -561,7 +532,7 @@ async def crypto_snapshot(request: Request):
         low_24h = float(ticker.get("low", 0))
 
         if current_price == 0:
-            raise HTTPException(status_code=400, detail=f"Invalid price for {symbol}")
+            raise HTTPException(status_code=503, detail="Market data unavailable")
 
         klines = await fetch_klines(symbol)
         closes = [k["close"] for k in klines]
@@ -638,6 +609,7 @@ async def crypto_snapshot(request: Request):
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"❌ Error: {e}")
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
@@ -652,7 +624,7 @@ async def root():
         "service": "Crypto Snapshot Pro x402 Agent",
         "agentId": "3613",
         "version": "3.2.1",
-        "data_source": "CoinGecko API",
+        "data_source": "CoinGecko API (REAL DATA ONLY, NO FALLBACK)",
         "supported_pairs": "BTC, ETH, SOL, DOGE, XRP, ADA, DOT, LINK, AVAX, MATIC, UNI, ATOM, LTC, BCH, NEAR, FIL, APT, ARB, OP, SUI",
         "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "8-Factor Scoring"],
         "x402": True,
