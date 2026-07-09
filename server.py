@@ -53,6 +53,14 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
     """Полная проверка платежа через OpenFacilitator"""
     logger.info("🔍 Starting facilitator verification...")
     
+    # Декодируем base64 в объект
+    try:
+        payment_data = json.loads(base64.b64decode(payment_payload).decode('utf-8'))
+        logger.info("✅ Payment payload decoded successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to decode payment payload: {e}")
+        return False
+    
     requirements = PAYMENT_CONFIG["accepts"][0]
     
     try:
@@ -60,7 +68,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
             verify_response = await client.post(
                 f"{FACILITATOR_URL}/verify",
                 json={
-                    "paymentPayload": payment_payload,
+                    "paymentPayload": payment_data,
                     "paymentRequirements": requirements
                 },
                 headers={"Content-Type": "application/json"}
@@ -83,7 +91,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
             settle_response = await client.post(
                 f"{FACILITATOR_URL}/settle",
                 json={
-                    "paymentPayload": payment_payload,
+                    "paymentPayload": payment_data,
                     "paymentRequirements": requirements
                 },
                 headers={"Content-Type": "application/json"}
