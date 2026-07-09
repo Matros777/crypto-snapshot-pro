@@ -53,7 +53,7 @@ PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com",
-        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports 500+ Binance pairs (BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
+        "description": "Crypto market analysis. Price: $0.025 per request.",
         "mimeType": "application/json"
     },
     "accepts": [
@@ -63,19 +63,10 @@ PAYMENT_CONFIG = {
             "amount": "25000",
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
-            "maxTimeoutSeconds": 300,
-            "domain": {
-                "name": "USD Coin",
-                "version": "2",
-                "chainId": 8453,
-                "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-            },
-            "extra": {
-                "name": "USD Coin",
-                "version": "2"
-            }
+            "maxTimeoutSeconds": 300
         }
-    ],
+    ]
+},
     "domain": {
         "name": "USD Coin",
         "version": "2",
