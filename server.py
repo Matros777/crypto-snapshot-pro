@@ -26,12 +26,9 @@ logger = logging.getLogger("crypto-snapshot")
 
 app = FastAPI(title="Crypto Snapshot Pro x402 Agent")
 
-# ============================================================
-# ИСТОЧНИК ДАННЫХ - CoinGecko (бесплатный, публичный)
-# ============================================================
-COINGECKO_API = "https://api.coingecko.com/api/v3"
+BINANCE_API = "https://api.binance.com/api/v3"
 _cache = {}
-_CACHE_TTL = 60  # 1 минута
+_CACHE_TTL = 10
 
 # ============================================================
 # ALCHEMY RPC & CONTRACTS
@@ -56,6 +53,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
     """Полная проверка платежа через OpenFacilitator"""
     logger.info("🔍 Starting facilitator verification...")
     
+    # Декодируем base64 в объект
     try:
         payment_data = json.loads(base64.b64decode(payment_payload).decode('utf-8'))
         logger.info("✅ Payment payload decoded successfully")
@@ -120,7 +118,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
 PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
-        "url": "https://crypto-snapshot-pro.onrender.com/",
+        "url": "https://crypto-snapshot-pro.onrender.com",
         "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports 500+ Binance pairs (BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
         "mimeType": "application/json"
     },
@@ -132,12 +130,45 @@ PAYMENT_CONFIG = {
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
             "maxTimeoutSeconds": 300,
+            "domain": {
+                "name": "USD Coin",
+                "version": "2",
+                "chainId": 8453,
+                "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+            },
             "extra": {
                 "name": "USD Coin",
-                "version": "2"
+                "version": "2",
+                "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                "assetTransferMethod": "eip3009"
             }
         }
-    ]
+    ],
+    "extensions": {
+        "bazaar": {
+            "info": {
+                "input": {
+                    "type": "http",
+                    "method": "POST",
+                    "body": {},
+                    "bodyType": "json"
+                },
+                "output": {
+                    "type": "json",
+                    "example": {
+                        "message": {
+                            "role": "assistant",
+                            "content": "📊 CRYPTO SNAPSHOT PRO — BTC/USDT..."
+                        }
+                    }
+                }
+            },
+            "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object"
+            }
+        }
+    }
 }
 
 
@@ -154,149 +185,6 @@ def create_402_response():
             "content-type": "text/plain"
         }
     )
-
-
-# ============================================================
-# CoinGecko API функции - ТОЛЬКО РЕАЛЬНЫЕ ДАННЫЕ, БЕЗ ФОЛБЭКА!
-# ============================================================
-async def fetch_ticker(symbol: str) -> dict:
-    """Получение данных через CoinGecko - ТОЛЬКО РЕАЛЬНЫЕ ДАННЫЕ!"""
-    cache_key = f"ticker_{symbol}"
-    now = time.time()
-    if cache_key in _cache and now - _cache[cache_key]["time"] < _CACHE_TTL:
-        return _cache[cache_key]["data"]
-    
-    # CoinGecko ID маппинг
-    coin_map = {
-        "BTCUSDT": "bitcoin",
-        "ETHUSDT": "ethereum",
-        "SOLUSDT": "solana",
-        "DOGEUSDT": "dogecoin",
-        "XRPUSDT": "ripple",
-        "ADAUSDT": "cardano",
-        "DOTUSDT": "polkadot",
-        "LINKUSDT": "chainlink",
-        "AVAXUSDT": "avalanche-2",
-        "MATICUSDT": "matic-network",
-        "UNIUSDT": "uniswap",
-        "ATOMUSDT": "cosmos",
-        "LTCUSDT": "litecoin",
-        "BCHUSDT": "bitcoin-cash",
-        "NEARUSDT": "near",
-        "FILUSDT": "filecoin",
-        "APTUSDT": "aptos",
-        "ARBUSDT": "arbitrum",
-        "OPUSDT": "optimism",
-        "SUIUSDT": "sui"
-    }
-    
-    coin_id = coin_map.get(symbol, symbol.lower().replace("usdt", ""))
-    
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                f"{COINGECKO_API}/simple/price",
-                params={
-                    "ids": coin_id,
-                    "vs_currencies": "usd",
-                    "include_24hr_change": "true",
-                    "include_24hr_high": "true",
-                    "include_24hr_low": "true",
-                    "include_last_updated_at": "true"
-                }
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"❌ CoinGecko error: {response.status_code} - {response.text}")
-                # НЕ ВОЗВРАЩАЕМ ФОЛБЭК! Возвращаем ошибку.
-                raise HTTPException(status_code=503, detail="Market data unavailable")
-            
-            data = response.json()
-            if coin_id not in data:
-                logger.error(f"❌ Symbol {symbol} not found in CoinGecko")
-                raise HTTPException(status_code=404, detail=f"Symbol {symbol} not found")
-            
-            coin_data = data[coin_id]
-            
-            result = {
-                "price": coin_data.get("usd", 0),
-                "change": coin_data.get("usd_24h_change", 0),
-                "high": coin_data.get("usd_24h_high", 0),
-                "low": coin_data.get("usd_24h_low", 0),
-                "volume": 0,
-                "time": time.time()
-            }
-            
-            if result["price"] == 0:
-                raise HTTPException(status_code=503, detail="Invalid price data")
-            
-            _cache[cache_key] = {"data": result, "time": now}
-            return result
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ CoinGecko error: {e}")
-        raise HTTPException(status_code=503, detail="Market data unavailable")
-
-
-async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> list[dict]:
-    """Получение исторических данных через CoinGecko - ТОЛЬКО РЕАЛЬНЫЕ ДАННЫЕ!"""
-    cache_key = f"klines_{symbol}_{interval}_{limit}"
-    now = time.time()
-    if cache_key in _cache and now - _cache[cache_key]["time"] < _CACHE_TTL:
-        return _cache[cache_key]["data"]
-    
-    coin_map = {
-        "BTCUSDT": "bitcoin",
-        "ETHUSDT": "ethereum",
-        "SOLUSDT": "solana",
-        "DOGEUSDT": "dogecoin",
-        "XRPUSDT": "ripple"
-    }
-    
-    coin_id = coin_map.get(symbol, symbol.lower().replace("usdt", ""))
-    
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                f"{COINGECKO_API}/coins/{coin_id}/market_chart",
-                params={
-                    "vs_currency": "usd",
-                    "days": "30",
-                    "interval": "daily"
-                }
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"❌ CoinGecko klines error: {response.status_code}")
-                raise HTTPException(status_code=503, detail="Historical data unavailable")
-            
-            data = response.json()
-            prices = data.get("prices", [])
-            
-            if not prices or len(prices) < 10:
-                raise HTTPException(status_code=503, detail="Insufficient historical data")
-            
-            klines = []
-            for i, p in enumerate(prices):
-                klines.append({
-                    'close': p[1],
-                    'high': p[1] * 1.01,
-                    'low': p[1] * 0.99,
-                    'volume': 0,
-                    'time': int(p[0])
-                })
-            
-            klines = klines[-limit:] if len(klines) > limit else klines
-            _cache[cache_key] = {"data": klines, "time": now}
-            return klines
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ CoinGecko klines error: {e}")
-        raise HTTPException(status_code=503, detail="Historical data unavailable")
 
 
 # ============================================================
@@ -453,6 +341,39 @@ def format_price(price: float) -> str:
     return f"${price:.6f}"
 
 
+async def fetch_ticker(symbol: str) -> dict:
+    cache_key = f"ticker_{symbol}"
+    now = time.time()
+    if cache_key in _cache and now - _cache[cache_key]["time"] < _CACHE_TTL:
+        return _cache[cache_key]["data"]
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.get(f"{BINANCE_API}/ticker/24hr", params={"symbol": symbol})
+        if response.status_code != 200:
+            raise HTTPException(status_code=400, detail=f"Binance API error: {response.text}")
+        data = response.json()
+        if not data or "lastPrice" not in data:
+            raise HTTPException(status_code=400, detail=f"Symbol {symbol} not found on Binance")
+        _cache[cache_key] = {"data": data, "time": now}
+        return data
+
+
+async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> list[dict]:
+    cache_key = f"kline_{symbol}_{interval}_{limit}"
+    now = time.time()
+    if cache_key in _cache and now - _cache[cache_key]["time"] < _CACHE_TTL:
+        return _cache[cache_key]["data"]
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.get(f"{BINANCE_API}/klines", params={
+            "symbol": symbol, "interval": interval, "limit": limit
+        })
+        if response.status_code != 200:
+            raise HTTPException(status_code=400, detail=f"Binance API error: {response.text}")
+        data = response.json()
+        klines = [{"close": float(k[4]), "high": float(k[2]), "low": float(k[3]), "volume": float(k[5]), "time": k[0]} for k in data]
+        _cache[cache_key] = {"data": klines, "time": now}
+        return klines
+
+
 # ============================================================
 # PAYABLE ENDPOINT
 # ============================================================
@@ -526,13 +447,13 @@ async def crypto_snapshot(request: Request):
    
     try:
         ticker = await fetch_ticker(symbol)
-        current_price = float(ticker.get("price", 0))
-        change_24h = float(ticker.get("change", 0))
-        high_24h = float(ticker.get("high", 0))
-        low_24h = float(ticker.get("low", 0))
+        current_price = float(ticker.get("lastPrice", 0))
+        change_24h = float(ticker.get("priceChangePercent", 0))
+        high_24h = float(ticker.get("highPrice", 0))
+        low_24h = float(ticker.get("lowPrice", 0))
 
         if current_price == 0:
-            raise HTTPException(status_code=503, detail="Market data unavailable")
+            raise HTTPException(status_code=400, detail=f"Invalid price for {symbol}")
 
         klines = await fetch_klines(symbol)
         closes = [k["close"] for k in klines]
@@ -609,7 +530,6 @@ async def crypto_snapshot(request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Error: {e}")
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
@@ -624,8 +544,8 @@ async def root():
         "service": "Crypto Snapshot Pro x402 Agent",
         "agentId": "3613",
         "version": "3.2.1",
-        "data_source": "CoinGecko API (REAL DATA ONLY, NO FALLBACK)",
-        "supported_pairs": "BTC, ETH, SOL, DOGE, XRP, ADA, DOT, LINK, AVAX, MATIC, UNI, ATOM, LTC, BCH, NEAR, FIL, APT, ARB, OP, SUI",
+        "data_source": "Binance Public API",
+        "supported_pairs": "All Binance spot pairs",
         "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "8-Factor Scoring"],
         "x402": True,
         "settle": "OpenFacilitator",
