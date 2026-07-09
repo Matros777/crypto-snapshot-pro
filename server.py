@@ -46,13 +46,13 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION
+# x402 PAYMENT CONFIGURATION - ИСПРАВЛЕННАЯ ВЕРСИЯ
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com",
-        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports 500+ Binance pairs (BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
+        "description": "Crypto market analysis $0.025 per request",
         "mimeType": "application/json"
     },
     "accepts": [
@@ -267,7 +267,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
 
 
 # ============================================================
-# 8-ФАКТОРНЫЙ АНАЛИЗ (СОКРАЩЕН)
+# 8-ФАКТОРНЫЙ АНАЛИЗ
 # ============================================================
 
 def calculate_rsi(closes: list[float], period: int = 14) -> float:
