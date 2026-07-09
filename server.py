@@ -52,16 +52,23 @@ FACILITATOR_URL = "https://x402-facilitator-rnne.onrender.com"
 async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
     """Полная проверка платежа через свой фасилитатор"""
     logger.info("🔍 Starting facilitator verification...")
+    
+    # Берем только accepts[0] для требований
+    requirements = PAYMENT_CONFIG["accepts"][0]
+    
     try:
         async with httpx.AsyncClient(timeout=20) as client:
             verify_response = await client.post(
                 f"{FACILITATOR_URL}/verify",
                 json={
                     "payment": payment_payload,
-                    "requirements": PAYMENT_CONFIG
+                    "requirements": requirements
                 },
                 headers={"Content-Type": "application/json"}
             )
+            
+            logger.info(f"VERIFY STATUS: {verify_response.status_code}")
+            logger.info(f"VERIFY RESPONSE: {verify_response.text}")
             
             if verify_response.status_code != 200:
                 logger.warning(f"⚠️ Verification failed: {verify_response.status_code}")
@@ -78,10 +85,13 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
                 f"{FACILITATOR_URL}/settle",
                 json={
                     "payment": payment_payload,
-                    "requirements": PAYMENT_CONFIG
+                    "requirements": requirements
                 },
                 headers={"Content-Type": "application/json"}
             )
+            
+            logger.info(f"SETTLE STATUS: {settle_response.status_code}")
+            logger.info(f"SETTLE RESPONSE: {settle_response.text}")
             
             if settle_response.status_code != 200:
                 logger.warning(f"⚠️ Settle failed: {settle_response.status_code}")
@@ -162,7 +172,7 @@ def create_402_response():
         content="Payment Required",
         status_code=402,
         headers={
-            "PAYMENT-REQUIRED": encoded,  # <-- ИСПРАВЛЕНО!
+            "PAYMENT-REQUIRED": encoded,
             "content-type": "text/plain"
         }
     )
@@ -362,8 +372,7 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
 async def payable_endpoint(request: Request):
     payment_header = (
         request.headers.get("x-payment") or
-        request.headers.get("payment-signature") or
-        request.headers.get("authorization")
+        request.headers.get("payment-signature")
     )
     if not payment_header:
         return create_402_response()
@@ -386,8 +395,7 @@ async def crypto_snapshot(request: Request):
     # Проверка оплаты x402
     payment_header = (
         request.headers.get("x-payment") or
-        request.headers.get("payment-signature") or
-        request.headers.get("authorization")
+        request.headers.get("payment-signature")
     )
     
     if not payment_header:
