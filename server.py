@@ -119,7 +119,7 @@ PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com",
-        "description": "Crypto analysis. Price: $0.025 per request.",
+        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports 500+ Binance pairs (BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
         "mimeType": "application/json"
     },
     "accepts": [
@@ -143,7 +143,32 @@ PAYMENT_CONFIG = {
                 "assetTransferMethod": "eip3009"
             }
         }
-    ]
+    ],
+    "extensions": {
+        "bazaar": {
+            "info": {
+                "input": {
+                    "type": "http",
+                    "method": "POST",
+                    "body": {},
+                    "bodyType": "json"
+                },
+                "output": {
+                    "type": "json",
+                    "example": {
+                        "message": {
+                            "role": "assistant",
+                            "content": "📊 CRYPTO SNAPSHOT PRO — BTC/USDT..."
+                        }
+                    }
+                }
+            },
+            "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object"
+            }
+        }
+    }
 }
 
 
@@ -156,7 +181,7 @@ def create_402_response():
         content="Payment Required",
         status_code=402,
         headers={
-            "payment-required": encoded,
+            "PAYMENT-REQUIRED": encoded,
             "content-type": "text/plain"
         }
     )
@@ -356,8 +381,7 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
 async def payable_endpoint(request: Request):
     payment_header = (
         request.headers.get("x-payment") or
-        request.headers.get("payment-signature") or
-        request.headers.get("authorization")
+        request.headers.get("payment-signature")
     )
     if not payment_header:
         return create_402_response()
@@ -379,8 +403,7 @@ async def payable_endpoint(request: Request):
 async def crypto_snapshot(request: Request):
     payment_header = (
         request.headers.get("x-payment") or
-        request.headers.get("payment-signature") or
-        request.headers.get("authorization")
+        request.headers.get("payment-signature")
     )
     
     if not payment_header:
