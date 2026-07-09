@@ -113,13 +113,13 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION - ИСПРАВЛЕННАЯ ВЕРСИЯ
+# x402 PAYMENT CONFIGURATION - УПРОЩЕННАЯ ВЕРСИЯ
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com/",
-        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports 500+ Binance pairs (BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
+        "description": "Crypto market analysis",
         "mimeType": "application/json"
     },
     "accepts": [
@@ -130,17 +130,9 @@ PAYMENT_CONFIG = {
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
             "maxTimeoutSeconds": 300,
-            "domain": {
-                "name": "USD Coin",
-                "version": "2",
-                "chainId": 8453,
-                "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-            },
             "extra": {
                 "name": "USD Coin",
-                "version": "2",
-                "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-                "assetTransferMethod": "eip3009"
+                "version": "2"
             }
         }
     ]
@@ -148,16 +140,16 @@ PAYMENT_CONFIG = {
 
 
 def create_402_response():
-    """Возвращает 402 Payment Required с правильным заголовком"""
+    """Возвращает 402 Payment Required"""
     envelope = json.dumps(PAYMENT_CONFIG, separators=(',', ':'))
     encoded = base64.b64encode(envelope.encode("utf-8")).decode("utf-8")
     logger.info("🔐 402 Payment Required sent")
     return Response(
-        content=json.dumps({"error": "Payment Required"}),
+        content="Payment Required",
         status_code=402,
         headers={
             "PAYMENT-REQUIRED": encoded,
-            "Content-Type": "application/json"
+            "Content-Type": "text/plain"
         }
     )
 
