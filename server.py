@@ -12,6 +12,7 @@ import base64
 import json
 import logging
 import sys
+import asyncio
 from typing import Optional, Any
 
 # ============================================================
@@ -27,6 +28,7 @@ logger = logging.getLogger("crypto-snapshot")
 app = FastAPI(title="Crypto Snapshot Pro x402 Agent")
 
 BINANCE_API = "https://api.binance.com/api/v3"
+BINANCE_WS = "wss://stream.binance.com:9443/ws"
 _cache = {}
 _CACHE_TTL = 10
 
@@ -118,7 +120,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
 PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
-        "url": "https://crypto-snapshot-pro.onrender.com",
+        "url": "https://crypto-snapshot-pro.onrender.com/",
         "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports 500+ Binance pairs (BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
         "mimeType": "application/json"
     },
@@ -130,45 +132,12 @@ PAYMENT_CONFIG = {
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
             "maxTimeoutSeconds": 300,
-            "domain": {
-                "name": "USD Coin",
-                "version": "2",
-                "chainId": 8453,
-                "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-            },
             "extra": {
                 "name": "USD Coin",
-                "version": "2",
-                "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-                "assetTransferMethod": "eip3009"
+                "version": "2"
             }
         }
-    ],
-    "extensions": {
-        "bazaar": {
-            "info": {
-                "input": {
-                    "type": "http",
-                    "method": "POST",
-                    "body": {},
-                    "bodyType": "json"
-                },
-                "output": {
-                    "type": "json",
-                    "example": {
-                        "message": {
-                            "role": "assistant",
-                            "content": "📊 CRYPTO SNAPSHOT PRO — BTC/USDT..."
-                        }
-                    }
-                }
-            },
-            "schema": {
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "type": "object"
-            }
-        }
-    }
+    ]
 }
 
 
@@ -186,6 +155,89 @@ def create_402_response():
         }
     )
 
+
+# ============================================================
+# Binance WebSocket клиент для получения данных
+# ============================================================
+class BinanceWebSocket:
+    def __init__(self):
+        self.ws = None
+        self.price_data = {}
+        self.last_update = 0
+        
+    async def connect(self):
+        """Подключение к WebSocket"""
+        import websockets
+        self.ws = await websockets.connect(BINANCE_WS)
+        logger.info("✅ Connected to Binance WebSocket")
+        # Подписываемся на потоки
+        subscribe_msg = {
+            "method": "SUBSCRIBE",
+            "params": [
+                "btcusdt@ticker",
+                "ethusdt@ticker",
+                "solusdt@ticker",
+                "dogeusdt@ticker",
+                "xrpusdt@ticker"
+            ],
+            "id": 1
+        }
+        await self.ws.send(json.dumps(subscribe_msg))
+        logger.info("✅ Subscribed to ticker streams")
+        asyncio.create_task(self._listen())
+        
+    async def _listen(self):
+        """Слушает WebSocket и обновляет данные"""
+        try:
+            async for message in self.ws:
+                data = json.loads(message)
+                if 's' in data and 'c' in data:
+                    symbol = data['s']
+                    self.price_data[symbol] = {
+                        'price': float(data['c']),
+                        'change': float(data.get('P', 0)),
+                        'high': float(data.get('h', 0)),
+                        'low': float(data.get('l', 0)),
+                        'volume': float(data.get('v', 0)),
+                        'time': time.time()
+                    }
+                    self.last_update = time.time()
+        except Exception as e:
+            logger.error(f"❌ WebSocket error: {e}")
+            await self.reconnect()
+            
+    async def reconnect(self):
+        """Переподключение при обрыве"""
+        logger.warning("🔄 Reconnecting to Binance WebSocket...")
+        await asyncio.sleep(5)
+        await self.connect()
+        
+    async def get_ticker(self, symbol: str) -> Optional[dict]:
+        """Получение данных по символу из WebSocket"""
+        if symbol in self.price_data:
+            return self.price_data[symbol]
+        return None
+        
+    async def get_klines(self, symbol: str, interval: str = "1d", limit: int = 50) -> list:
+        """Получение исторических данных через REST (с кешированием)"""
+        cache_key = f"klines_{symbol}_{interval}_{limit}"
+        now = time.time()
+        if cache_key in _cache and now - _cache[cache_key]["time"] < _CACHE_TTL:
+            return _cache[cache_key]["data"]
+            
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(f"{BINANCE_API}/klines", params={
+                "symbol": symbol, "interval": interval, "limit": limit
+            })
+            if response.status_code != 200:
+                raise HTTPException(status_code=400, detail=f"Binance API error: {response.text}")
+            data = response.json()
+            klines = [{"close": float(k[4]), "high": float(k[2]), "low": float(k[3]), "volume": float(k[5]), "time": k[0]} for k in data]
+            _cache[cache_key] = {"data": klines, "time": now}
+            return klines
+
+# Глобальный экземпляр WebSocket
+ws_client = BinanceWebSocket()
 
 # ============================================================
 # Технические функции
@@ -342,10 +394,18 @@ def format_price(price: float) -> str:
 
 
 async def fetch_ticker(symbol: str) -> dict:
+    """Получение данных через WebSocket + REST fallback"""
+    # Сначала пробуем WebSocket
+    ws_data = await ws_client.get_ticker(symbol)
+    if ws_data:
+        return ws_data
+    
+    # Fallback на REST с кешем
     cache_key = f"ticker_{symbol}"
     now = time.time()
     if cache_key in _cache and now - _cache[cache_key]["time"] < _CACHE_TTL:
         return _cache[cache_key]["data"]
+        
     async with httpx.AsyncClient(timeout=10.0) as client:
         response = await client.get(f"{BINANCE_API}/ticker/24hr", params={"symbol": symbol})
         if response.status_code != 200:
@@ -358,20 +418,8 @@ async def fetch_ticker(symbol: str) -> dict:
 
 
 async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> list[dict]:
-    cache_key = f"kline_{symbol}_{interval}_{limit}"
-    now = time.time()
-    if cache_key in _cache and now - _cache[cache_key]["time"] < _CACHE_TTL:
-        return _cache[cache_key]["data"]
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.get(f"{BINANCE_API}/klines", params={
-            "symbol": symbol, "interval": interval, "limit": limit
-        })
-        if response.status_code != 200:
-            raise HTTPException(status_code=400, detail=f"Binance API error: {response.text}")
-        data = response.json()
-        klines = [{"close": float(k[4]), "high": float(k[2]), "low": float(k[3]), "volume": float(k[5]), "time": k[0]} for k in data]
-        _cache[cache_key] = {"data": klines, "time": now}
-        return klines
+    """Получение исторических данных через REST с кешем"""
+    return await ws_client.get_klines(symbol, interval, limit)
 
 
 # ============================================================
@@ -447,10 +495,10 @@ async def crypto_snapshot(request: Request):
    
     try:
         ticker = await fetch_ticker(symbol)
-        current_price = float(ticker.get("lastPrice", 0))
-        change_24h = float(ticker.get("priceChangePercent", 0))
-        high_24h = float(ticker.get("highPrice", 0))
-        low_24h = float(ticker.get("lowPrice", 0))
+        current_price = float(ticker.get("price" if "price" in ticker else "lastPrice", 0))
+        change_24h = float(ticker.get("change" if "change" in ticker else "priceChangePercent", 0))
+        high_24h = float(ticker.get("high" if "high" in ticker else "highPrice", 0))
+        low_24h = float(ticker.get("low" if "low" in ticker else "lowPrice", 0))
 
         if current_price == 0:
             raise HTTPException(status_code=400, detail=f"Invalid price for {symbol}")
@@ -544,7 +592,7 @@ async def root():
         "service": "Crypto Snapshot Pro x402 Agent",
         "agentId": "3613",
         "version": "3.2.1",
-        "data_source": "Binance Public API",
+        "data_source": "Binance WebSocket + REST",
         "supported_pairs": "All Binance spot pairs",
         "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "8-Factor Scoring"],
         "x402": True,
@@ -555,3 +603,11 @@ async def root():
             "/health": "Health check (GET)",
         }
     }
+
+
+# ============================================================
+# Запуск WebSocket при старте
+# ============================================================
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(ws_client.connect())
