@@ -47,10 +47,10 @@ class AgentResponse(BaseModel):
 # ============================================================
 # FACILITATOR VERIFICATION
 # ============================================================
-FACILITATOR_URL = "https://x402-facilitator-rnne.onrender.com"
+FACILITATOR_URL = "https://facilitator.openx402.ai"
 
 async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
-    """Полная проверка платежа через свой фасилитатор"""
+    """Полная проверка платежа через OpenFacilitator"""
     logger.info("🔍 Starting facilitator verification...")
     
     # Берем только accepts[0] для требований
@@ -112,7 +112,7 @@ PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com",
-        "description": "Real-time crypto market analysis using 8-factor scoring...",
+        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports 500+ Binance pairs (BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
         "mimeType": "application/json"
     },
     "accepts": [
@@ -542,7 +542,7 @@ async def root():
         "supported_pairs": "All Binance spot pairs",
         "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "8-Factor Scoring"],
         "x402": True,
-        "settle": "CDP Facilitator",
+        "settle": "OpenFacilitator",
         "endpoints": {
             "/": "Main endpoint (POST/GET)",
             "/payable": "x402 verification endpoint (POST)",
