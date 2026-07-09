@@ -50,7 +50,7 @@ class AgentResponse(BaseModel):
 # ============================================================
 # FACILITATOR VERIFICATION
 # ============================================================
-FACILITATOR_URL = "https://facilitator.openx402.ai"
+FACILITATOR_URL = "https://crypto-snapshot-pro.onrender.com"
 
 async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
     """Полная проверка платежа через OpenFacilitator"""
