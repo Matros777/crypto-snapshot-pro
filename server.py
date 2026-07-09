@@ -4,12 +4,25 @@ Agent ID: #3613
 Service: Professional Multi-Factor Market Analysis ($0.025 per request)
 """
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import httpx
 import time
 import base64
 import json
-from typing import Optional
+import logging
+import sys
+from typing import Optional, Any
+
+# ============================================================
+# ЛОГИРОВАНИЕ
+# ============================================================
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger("crypto-snapshot")
 
 app = FastAPI(title="Crypto Snapshot Pro x402 Agent")
 
@@ -17,15 +30,72 @@ BINANCE_API = "https://api.binance.com/api/v3"
 _cache = {}
 _CACHE_TTL = 10
 
+# ============================================================
+# ALCHEMY RPC & CONTRACTS
+# ============================================================
+ALCHEMY_URL = "https://base-mainnet.g.alchemy.com/v2/U8khpdvO0rAwu9ojyBOpr"
 
-class AgentRequest(BaseModel):
-    agentId: str
-    message: dict
-    metadata: Optional[dict] = {}
+USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+PAYTO_ADDRESS = "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3"
+MIN_AMOUNT = 25000  # 0.025 USDC
 
 
 class AgentResponse(BaseModel):
     message: dict
+
+
+# ============================================================
+# FACILITATOR VERIFICATION
+# ============================================================
+FACILITATOR_URL = "https://x402-facilitator-rnne.onrender.com"
+
+async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
+    """Полная проверка платежа через свой фасилитатор"""
+    logger.info("🔍 Starting facilitator verification...")
+    try:
+        # Отправляем в фасилитатор
+        async with httpx.AsyncClient(timeout=20) as client:
+            # Проверяем
+            verify_response = await client.post(
+                f"{FACILITATOR_URL}/verify",
+                json={
+                    "payment": payment_payload,
+                    "requirements": PAYMENT_CONFIG
+                },
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if verify_response.status_code != 200:
+                logger.warning(f"⚠️ Verification failed: {verify_response.status_code}")
+                return False
+            
+            verify_data = verify_response.json()
+            if not verify_data.get("isValid", False):
+                logger.warning(f"⚠️ Invalid signature: {verify_data}")
+                return False
+            
+            logger.info("✅ Signature verified by facilitator")
+            
+            # Сеттлим
+            settle_response = await client.post(
+                f"{FACILITATOR_URL}/settle",
+                json={
+                    "payment": payment_payload,
+                    "requirements": PAYMENT_CONFIG
+                },
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if settle_response.status_code != 200:
+                logger.warning(f"⚠️ Settle failed: {settle_response.status_code}")
+                return False
+            
+            logger.info("✅ Payment verified and settled by facilitator")
+            return True
+            
+    except Exception as e:
+        logger.error(f"❌ Facilitator error: {e}")
+        return False
 
 
 # ============================================================
@@ -35,7 +105,7 @@ PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com",
-        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports 500+ Binance pairs (BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
+        "description": "Real-time crypto market analysis using 8-factor scoring. Price: $0.025 per request.",
         "mimeType": "application/json"
     },
     "accepts": [
@@ -46,6 +116,12 @@ PAYMENT_CONFIG = {
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
             "maxTimeoutSeconds": 300,
+            "domain": {
+                "name": "USD Coin",
+                "version": "2",
+                "chainId": 8453,
+                "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+            },
             "extra": {
                 "name": "USD Coin",
                 "version": "2"
@@ -82,9 +158,9 @@ PAYMENT_CONFIG = {
 
 def create_402_response():
     """Возвращает 402 Payment Required"""
-    envelope = json.dumps(PAYMENT_CONFIG)
+    envelope = json.dumps(PAYMENT_CONFIG, separators=(',', ':'))
     encoded = base64.b64encode(envelope.encode("utf-8")).decode("utf-8")
-   
+    logger.info("🔐 402 Payment Required sent")
     return Response(
         content="Payment Required",
         status_code=402,
@@ -96,7 +172,7 @@ def create_402_response():
 
 
 # ============================================================
-# Технические функции (без изменений)
+# Технические функции
 # ============================================================
 def calculate_rsi(closes: list[float], period: int = 14) -> float:
     if len(closes) < period + 1:
@@ -311,6 +387,14 @@ async def crypto_snapshot(request: Request):
     
     if not payment_header:
         return create_402_response()
+   
+    # ВЫЗЫВАЕМ ФАСИЛИТАТОР!
+    valid = await verify_and_settle_with_facilitator(payment_header)
+    if not valid:
+        return Response(
+            content="Payment verification failed",
+            status_code=402
+        )
    
     symbol = None
    
