@@ -53,9 +53,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
     """Полная проверка платежа через свой фасилитатор"""
     logger.info("🔍 Starting facilitator verification...")
     try:
-        # Отправляем в фасилитатор
         async with httpx.AsyncClient(timeout=20) as client:
-            # Проверяем
             verify_response = await client.post(
                 f"{FACILITATOR_URL}/verify",
                 json={
@@ -76,7 +74,6 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
             
             logger.info("✅ Signature verified by facilitator")
             
-            # Сеттлим
             settle_response = await client.post(
                 f"{FACILITATOR_URL}/settle",
                 json={
@@ -105,12 +102,12 @@ PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com",
-        "description": "Crypto analysis. Price: $0.025",
+        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports 500+ Binance pairs (BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
         "mimeType": "application/json"
     },
     "accepts": [
         {
-            "scheme": "v2-eip155-exact",
+            "scheme": "exact",
             "network": "eip155:8453",
             "amount": "25000",
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -388,7 +385,6 @@ async def crypto_snapshot(request: Request):
     if not payment_header:
         return create_402_response()
    
-    # ВЫЗЫВАЕМ ФАСИЛИТАТОР!
     valid = await verify_and_settle_with_facilitator(payment_header)
     if not valid:
         return Response(
