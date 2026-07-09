@@ -113,13 +113,13 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION
+# x402 PAYMENT CONFIGURATION - УПРОЩЕННАЯ ВЕРСИЯ ДЛЯ AWAL
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com",
-        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports 500+ Binance pairs (BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
+        "description": "Crypto analysis. Price: $0.025 per request.",
         "mimeType": "application/json"
     },
     "accepts": [
@@ -138,37 +138,10 @@ PAYMENT_CONFIG = {
             },
             "extra": {
                 "name": "USD Coin",
-                "version": "2",
-                "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-                "assetTransferMethod": "eip3009"
+                "version": "2"
             }
         }
-    ],
-    "extensions": {
-        "bazaar": {
-            "info": {
-                "input": {
-                    "type": "http",
-                    "method": "POST",
-                    "body": {},
-                    "bodyType": "json"
-                },
-                "output": {
-                    "type": "json",
-                    "example": {
-                        "message": {
-                            "role": "assistant",
-                            "content": "📊 CRYPTO SNAPSHOT PRO — BTC/USDT..."
-                        }
-                    }
-                }
-            },
-            "schema": {
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "type": "object"
-            }
-        }
-    }
+    ]
 }
 
 
@@ -181,7 +154,8 @@ def create_402_response():
         content="Payment Required",
         status_code=402,
         headers={
-            "PAYMENT-REQUIRED": encoded,
+            "payment-required": encoded,  # нижний регистр для awal
+            "PAYMENT-REQUIRED": encoded,  # верхний регистр для x402 v2
             "content-type": "text/plain"
         }
     )
