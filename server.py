@@ -12,6 +12,7 @@ import base64
 import json
 import logging
 import sys
+import os
 from typing import Optional, Any
 
 # ============================================================
@@ -27,9 +28,10 @@ logger = logging.getLogger("crypto-snapshot")
 app = FastAPI(title="Crypto Snapshot Pro x402 Agent")
 
 # ============================================================
-# ИСТОЧНИК ДАННЫХ - Bitget (публичный, бесплатный)
+# ИСТОЧНИК ДАННЫХ - CoinMarketCap (с API ключом)
 # ============================================================
-BITGET_API = "https://api.bitget.com/api/v2/spot/market"
+CMC_API = "https://pro-api.coinmarketcap.com/v2"
+CMC_API_KEY = os.getenv("CMC_API_KEY", "ВСТАВЬ_СВОЙ_КЛЮЧ_СЮДА")
 _cache = {}
 _CACHE_TTL = 60  # 1 минута
 
@@ -157,46 +159,79 @@ def create_402_response():
 
 
 # ============================================================
-# Bitget API - ТОЛЬКО РЕАЛЬНЫЕ ДАННЫЕ
+# CoinMarketCap API - ТОЛЬКО РЕАЛЬНЫЕ ДАННЫЕ
 # ============================================================
+# ID монет в CoinMarketCap
+CMC_ID_MAP = {
+    "BTCUSDT": "1",
+    "ETHUSDT": "1027",
+    "SOLUSDT": "5426",
+    "DOGEUSDT": "74",
+    "XRPUSDT": "52",
+    "ADAUSDT": "2010",
+    "DOTUSDT": "6636",
+    "LINKUSDT": "1975",
+    "AVAXUSDT": "5805",
+    "MATICUSDT": "3890",
+    "UNIUSDT": "7083",
+    "ATOMUSDT": "3794",
+    "LTCUSDT": "2",
+    "BCHUSDT": "1831",
+    "NEARUSDT": "6535",
+    "FILUSDT": "2280",
+    "APTUSDT": "21794",
+    "ARBUSDT": "11841",
+    "OPUSDT": "11840",
+    "SUIUSDT": "20947"
+}
+
 async def fetch_ticker(symbol: str) -> dict:
-    """Получение данных через Bitget"""
+    """Получение данных через CoinMarketCap"""
     cache_key = f"ticker_{symbol}"
     now = time.time()
     if cache_key in _cache and now - _cache[cache_key]["time"] < _CACHE_TTL:
         return _cache[cache_key]["data"]
     
+    coin_id = CMC_ID_MAP.get(symbol)
+    if not coin_id:
+        logger.error(f"❌ Symbol {symbol} not found in CMC mapping")
+        raise HTTPException(status_code=404, detail=f"Symbol {symbol} not supported")
+    
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            logger.info(f"📊 Fetching {symbol} from Bitget...")
+            logger.info(f"📊 Fetching {symbol} from CoinMarketCap...")
             response = await client.get(
-                f"{BITGET_API}/tickers",
-                params={"symbol": symbol}
+                f"{CMC_API}/cryptocurrency/quotes/latest",
+                params={"id": coin_id, "convert": "USD"},
+                headers={"X-CMC_PRO_API_KEY": CMC_API_KEY}
             )
             
+            if response.status_code == 401:
+                logger.error("❌ Invalid CMC API key")
+                raise HTTPException(status_code=503, detail="Invalid API key")
+            
             if response.status_code != 200:
-                logger.error(f"❌ Bitget error: {response.status_code}")
+                logger.error(f"❌ CMC error: {response.status_code}")
                 raise HTTPException(status_code=503, detail="Market data unavailable")
             
             data = response.json()
-            
-            # Bitget ответ: {"code":"00000","msg":"success","data":[{"symbol":"ETHUSDT",...}]}
-            if data.get("code") != "00000" or not data.get("data"):
-                logger.error(f"❌ Bitget error: {data}")
+            if data.get("status", {}).get("error_code") != 0:
+                logger.error(f"❌ CMC API error: {data}")
                 raise HTTPException(status_code=503, detail="Market data unavailable")
             
-            ticker_data = data["data"][0]
+            coin_data = data.get("data", {}).get(coin_id, {})
+            quote = coin_data.get("quote", {}).get("USD", {})
             
-            price = float(ticker_data.get("lastPr", 0))
+            price = quote.get("price", 0)
             if price == 0:
                 raise HTTPException(status_code=503, detail="Invalid price data")
             
             result = {
                 "price": price,
-                "change": float(ticker_data.get("change24h", 0)),
-                "high": float(ticker_data.get("high24h", price)),
-                "low": float(ticker_data.get("low24h", price)),
-                "volume": float(ticker_data.get("baseVolume", 0)),
+                "change": quote.get("percent_change_24h", 0),
+                "high": quote.get("high_24h", price),
+                "low": quote.get("low_24h", price),
+                "volume": quote.get("volume_24h", 0),
                 "time": time.time()
             }
             
@@ -207,52 +242,63 @@ async def fetch_ticker(symbol: str) -> dict:
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Bitget error: {e}")
+        logger.error(f"❌ CMC error: {e}")
         raise HTTPException(status_code=503, detail="Market data unavailable")
 
 
 async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> list[dict]:
-    """Получение исторических данных через Bitget"""
+    """Получение исторических данных через CoinMarketCap"""
     cache_key = f"klines_{symbol}_{interval}_{limit}"
     now = time.time()
     if cache_key in _cache and now - _cache[cache_key]["time"] < _CACHE_TTL:
         return _cache[cache_key]["data"]
     
+    coin_id = CMC_ID_MAP.get(symbol)
+    if not coin_id:
+        logger.error(f"❌ Symbol {symbol} not found in CMC mapping")
+        raise HTTPException(status_code=404, detail=f"Symbol {symbol} not supported")
+    
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            logger.info(f"📊 Fetching klines for {symbol} from Bitget...")
+            logger.info(f"📊 Fetching klines for {symbol} from CoinMarketCap...")
             response = await client.get(
-                f"{BITGET_API}/candles",
+                f"{CMC_API}/cryptocurrency/ohlcv/historical",
                 params={
-                    "symbol": symbol,
-                    "granularity": "1D",
-                    "limit": limit
-                }
+                    "id": coin_id,
+                    "convert": "USD",
+                    "time_period": "daily",
+                    "count": limit
+                },
+                headers={"X-CMC_PRO_API_KEY": CMC_API_KEY}
             )
             
+            if response.status_code == 401:
+                logger.error("❌ Invalid CMC API key")
+                raise HTTPException(status_code=503, detail="Invalid API key")
+            
             if response.status_code != 200:
-                logger.error(f"❌ Bitget klines error: {response.status_code}")
+                logger.error(f"❌ CMC klines error: {response.status_code}")
                 raise HTTPException(status_code=503, detail="Historical data unavailable")
             
             data = response.json()
-            
-            if data.get("code") != "00000" or not data.get("data"):
-                logger.error(f"❌ Bitget klines error: {data}")
+            if data.get("status", {}).get("error_code") != 0:
+                logger.error(f"❌ CMC API error: {data}")
                 raise HTTPException(status_code=503, detail="Historical data unavailable")
             
-            candles = data["data"]
+            ohlcv_data = data.get("data", {}).get("quotes", [])
             
-            if not candles or len(candles) < 10:
+            if not ohlcv_data or len(ohlcv_data) < 5:
                 raise HTTPException(status_code=503, detail="Insufficient historical data")
             
             klines = []
-            for candle in candles:
+            for item in ohlcv_data:
+                quote = item.get("quote", {}).get("USD", {})
                 klines.append({
-                    'close': float(candle[4]),  # close price
-                    'high': float(candle[3]),   # high price
-                    'low': float(candle[2]),    # low price
-                    'volume': float(candle[5]), # volume
-                    'time': int(candle[0])      # timestamp
+                    'close': quote.get("close", 0),
+                    'high': quote.get("high", 0),
+                    'low': quote.get("low", 0),
+                    'volume': quote.get("volume", 0),
+                    'time': int(item.get("timestamp", 0))
                 })
             
             _cache[cache_key] = {"data": klines, "time": now}
@@ -261,7 +307,7 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Bitget klines error: {e}")
+        logger.error(f"❌ CMC klines error: {e}")
         raise HTTPException(status_code=503, detail="Historical data unavailable")
 
 
@@ -590,7 +636,7 @@ async def root():
         "service": "Crypto Snapshot Pro x402 Agent",
         "agentId": "3613",
         "version": "3.2.1",
-        "data_source": "Bitget Public API (REAL DATA ONLY, NO FALLBACK)",
+        "data_source": "CoinMarketCap API (REAL DATA ONLY, NO FALLBACK)",
         "supported_pairs": "BTC, ETH, SOL, DOGE, XRP, ADA, DOT, LINK, AVAX, MATIC, UNI, ATOM, LTC, BCH, NEAR, FIL, APT, ARB, OP, SUI",
         "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "8-Factor Scoring"],
         "x402": True,
