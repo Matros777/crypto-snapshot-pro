@@ -1,4 +1,4 @@
-"""
+Это предыдущая версия   оставим так или что-то исправим ?"""
 Crypto Snapshot Pro — x402 Agent for Agentic.Market
 Agent ID: #3613
 Service: Professional Multi-Factor Market Analysis ($0.025 per request)
@@ -13,6 +13,7 @@ import base64
 import json
 import logging
 import sys
+import urllib.parse
 from typing import Optional, Any
 
 # ============================================================
@@ -46,13 +47,13 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION - ИСПРАВЛЕННАЯ ВЕРСИЯ
+# x402 PAYMENT CONFIGURATION - С extra ДЛЯ AWAL
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com",
-        "description": "Crypto market analysis $0.025 per request",
+        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports 500+ Binance pairs (BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
         "mimeType": "application/json"
     },
     "accepts": [
@@ -75,6 +76,12 @@ PAYMENT_CONFIG = {
             }
         }
     ],
+    "domain": {
+        "name": "USD Coin",
+        "version": "2",
+        "chainId": 8453,
+        "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    },
     "extensions": {
         "bazaar": {
             "info": {
@@ -105,6 +112,7 @@ PAYMENT_CONFIG = {
 
 def get_payment_header(request: Request) -> Optional[str]:
     """Универсальный поиск платежного заголовка"""
+    # Сначала ищем Authorization (от awal)
     auth = request.headers.get("authorization")
     if auth:
         auth = auth.strip()
@@ -116,6 +124,7 @@ def get_payment_header(request: Request) -> Optional[str]:
             return auth[7:].strip()
         return auth
     
+    # Если нет Authorization, ищем другие заголовки
     possible_headers = [
         "x-payment",
         "payment-signature",
@@ -135,125 +144,110 @@ def create_402_response():
     """Возвращает 402 Payment Required с заголовком payment-required"""
     envelope = json.dumps(PAYMENT_CONFIG, separators=(',', ':'))
     encoded = base64.b64encode(envelope.encode('utf-8')).decode('utf-8')
+    encoded_uri = urllib.parse.quote(encoded)
     logger.info("🔐 402 Payment Required sent")
     return Response(
-        content=json.dumps({"error": "Payment header is required"}),
+        content="Payment Required",
         status_code=402,
-        headers={
-            "payment-required": encoded,
-            "content-type": "application/json"
-        }
+        headers={"payment-required": encoded_uri}
     )
 
 
 # ============================================================
-# FACILITATOR VERIFICATION
+# FACILITATOR VERIFICATION (REQUIRED FOR SIGNAL)
 # ============================================================
 FACILITATOR_URL = "https://x402-facilitator-rnne.onrender.com"
 
 async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
     """Полная проверка платежа через свой фасилитатор"""
-    logger.info("🔍 Starting facilitator verification...")
-    logger.info(f"📥 Payment payload (first 100): {payment_payload[:100]}...")
-    
     try:
-        # Пробуем декодировать
-        try:
-            decoded = base64.b64decode(payment_payload).decode("utf-8")
-            payment_data = json.loads(decoded)
-            logger.info("✅ Payment data parsed successfully")
-        except Exception as e:
-            logger.error(f"❌ Failed to parse payment payload: {e}")
-            return False
+        decoded = base64.b64decode(payment_payload).decode("utf-8")
+        payment_data = json.loads(decoded)
         
-        # Проверяем структуру
         authorization = payment_data.get("payload", {}).get("authorization", {})
+        
         if not authorization:
             logger.error("❌ No authorization in payment payload")
             return False
         
-        # Проверяем получателя
         to_addr = authorization.get("to")
-        logger.info(f"📤 Recipient: {to_addr}")
-        logger.info(f"🎯 Expected: {PAYTO_ADDRESS}")
-        
         if to_addr.lower() != PAYTO_ADDRESS.lower():
             logger.warning(f"❌ Wrong recipient: {to_addr}")
             return False
         
-        # Проверяем сумму
         try:
             value = int(authorization.get("value", "0"))
         except:
             value = 0
         
-        logger.info(f"💰 Amount: {value} (min: {MIN_AMOUNT})")
-        
         if value < MIN_AMOUNT:
             logger.warning(f"❌ Amount too low: {value} (min {MIN_AMOUNT})")
             return False
         
-        # Проверяем время
         current_time = int(time.time())
-        valid_after = int(authorization.get("validAfter", "0"))
-        valid_before = int(authorization.get("validBefore", "0"))
         
-        logger.info(f"⏰ Valid: {valid_after} -> {valid_before}, Current: {current_time}")
+        try:
+            valid_after = int(authorization.get("validAfter", "0"))
+            valid_before = int(authorization.get("validBefore", "0"))
+        except:
+            valid_after = 0
+            valid_before = 0
         
         if valid_after > 0 and current_time < valid_after:
-            logger.warning(f"❌ Not yet valid")
+            logger.warning(f"❌ Payment not yet valid (validAfter: {valid_after})")
             return False
         
         if valid_before > 0 and current_time > valid_before:
-            logger.warning(f"❌ Expired")
+            logger.warning(f"❌ Payment expired (validBefore: {valid_before})")
             return False
         
         logger.info(f"✅ Authorization verified: {value} USDC to {to_addr}")
         
-        # Формируем запрос к фасилитатору
-        payload = {
-            "payment": payment_payload,
-            "requirements": PAYMENT_CONFIG
+        payment_requirements = {
+            "x402Version": 2,
+            "resource": PAYMENT_CONFIG.get("resource"),
+            "accepts": PAYMENT_CONFIG.get("accepts"),
+            "domain": PAYMENT_CONFIG.get("domain")
         }
         
-        logger.info(f"🔄 Sending to facilitator: {FACILITATOR_URL}/verify")
+        payment_payload_data = {
+            "x402Version": 2,
+            "payload": payment_data.get("payload"),
+            "extensions": payment_data.get("extensions", {})
+        }
         
-        async with httpx.AsyncClient(timeout=30) as client:
-            # Verify
+        async with httpx.AsyncClient(timeout=20) as client:
             verify_response = await client.post(
                 f"{FACILITATOR_URL}/verify",
-                json=payload,
+                json={
+                    "paymentPayload": payment_payload_data,
+                    "paymentRequirements": payment_requirements
+                },
                 headers={"Content-Type": "application/json"}
             )
             
-            logger.info(f"📡 Verify status: {verify_response.status_code}")
-            
             if verify_response.status_code != 200:
-                logger.warning(f"⚠️ Verify failed: {verify_response.text}")
+                logger.warning(f"⚠️ Verification failed: {verify_response.status_code} - {verify_response.text}")
                 return False
             
             verify_data = verify_response.json()
-            logger.info(f"✅ Verify response: {json.dumps(verify_data)[:200]}...")
-            
             if not verify_data.get("isValid", False):
-                logger.warning(f"⚠️ Invalid signature")
+                logger.warning(f"⚠️ Invalid signature: {verify_data}")
                 return False
             
             logger.info("✅ Signature verified by facilitator")
             
-            # Settle
-            logger.info(f"🔄 Sending settle to facilitator")
-            
             settle_response = await client.post(
                 f"{FACILITATOR_URL}/settle",
-                json=payload,
+                json={
+                    "paymentPayload": payment_payload_data,
+                    "paymentRequirements": payment_requirements
+                },
                 headers={"Content-Type": "application/json"}
             )
             
-            logger.info(f"📡 Settle status: {settle_response.status_code}")
-            
             if settle_response.status_code != 200:
-                logger.warning(f"⚠️ Settle failed: {settle_response.text}")
+                logger.warning(f"⚠️ Settle failed: {settle_response.status_code} - {settle_response.text}")
                 return False
             
             logger.info("✅ Payment verified and settled by facilitator")
@@ -261,8 +255,6 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
             
     except Exception as e:
         logger.error(f"❌ Facilitator error: {e}")
-        import traceback
-        logger.error(f"📚 {traceback.format_exc()}")
         return False
 
 
@@ -462,23 +454,17 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
 # ============================================================
 @app.post("/payable")
 async def payable_endpoint(request: Request):
-    logger.info("📍 /payable endpoint called")
     payment = get_payment_header(request)
-    logger.info(f"🔑 Payment header: {payment}")
-    
     if not payment:
-        logger.info("❌ No payment header, returning 402")
         return create_402_response()
     
     valid = await verify_and_settle_with_facilitator(payment)
     if not valid:
-        logger.error("❌ Payment verification failed")
         return JSONResponse(
             {"error": "Payment verification failed"},
             status_code=402
         )
     
-    logger.info("✅ Payment verified and settled")
     return {"status": "ok", "message": "Payment verified and settled"}
 
 
@@ -489,39 +475,27 @@ async def payable_endpoint(request: Request):
 async def crypto_snapshot(request: Request):
     """SIGNAL ONLY AFTER FACILITATOR VERIFICATION"""
     
-    logger.info("=" * 60)
-    logger.info("📥 New request received")
-    
-    headers = dict(request.headers)
-    logger.info(f"📋 ALL HEADERS: {headers}")
-    logger.info(f"🔧 Method: {request.method}, Path: {request.url.path}")
+    # Логируем ВСЕ заголовки
+    logger.info(f"📋 ALL HEADERS: {dict(request.headers)}")
     
     payment = get_payment_header(request)
     logger.info(f"🔑 Payment header: {payment}")
     
     if not payment:
-        logger.info("❌ No payment header found - returning 402")
-        return create_402_response()
-    
-    logger.info(f"✅ Payment header found: {payment[:50]}...")
+        return create_402_response()  # <-- ЭТО ИСПРАВЛЕНО!
     
     valid = await verify_and_settle_with_facilitator(payment)
     if not valid:
-        logger.error("❌ Payment verification failed by facilitator")
         return JSONResponse(
             {"error": "Payment verification failed by facilitator"},
             status_code=402
         )
     
-    logger.info("✅ Payment verified successfully, processing request...")
-    
     symbol = None
     if request.method == "POST":
         try:
             body = await request.json()
-            logger.info(f"📦 Request body: {body}")
         except:
-            logger.error("❌ Invalid JSON body")
             raise HTTPException(status_code=400, detail="Invalid JSON body")
         
         if "message" in body and isinstance(body["message"], dict):
@@ -641,7 +615,6 @@ async def crypto_snapshot(request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Error processing request: {e}")
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
