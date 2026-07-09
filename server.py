@@ -46,13 +46,13 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION - МИНИМАЛЬНАЯ ВЕРСИЯ
+# x402 PAYMENT CONFIGURATION
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com",
-        "description": "Crypto market analysis. Price: $0.025 per request.",
+        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports 500+ Binance pairs (BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
         "mimeType": "application/json"
     },
     "accepts": [
@@ -62,47 +62,64 @@ PAYMENT_CONFIG = {
             "amount": "25000",
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
-            "maxTimeoutSeconds": 300,
-            "domain": {
-                "name": "USD Coin",
-                "version": "2",
-                "chainId": 8453,
-                "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+            "maxTimeoutSeconds": 300
+        }
+    ],
+    "domain": {
+        "name": "USD Coin",
+        "version": "2",
+        "chainId": 8453,
+        "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    },
+    "extensions": {
+        "bazaar": {
+            "info": {
+                "input": {
+                    "type": "http",
+                    "method": "POST",
+                    "body": {},
+                    "bodyType": "json"
+                },
+                "output": {
+                    "type": "json",
+                    "example": {
+                        "message": {
+                            "role": "assistant",
+                            "content": "📊 CRYPTO SNAPSHOT PRO — BTC/USDT..."
+                        }
+                    }
+                }
             },
-            "extra": {
-                "name": "USD Coin",
-                "version": "2"
+            "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object"
             }
         }
-    ]
+    }
 }
 
 
 def get_payment_header(request: Request) -> Optional[str]:
     """Универсальный поиск платежного заголовка"""
-    auth = request.headers.get("authorization")
-    if auth:
-        auth = auth.strip()
-        if auth.lower().startswith("x402 "):
-            return auth[5:].strip()
-        elif auth.lower().startswith("l402 "):
-            return auth[5:].strip()
-        elif auth.lower().startswith("bearer "):
-            return auth[7:].strip()
-        return auth
-    
     possible_headers = [
         "x-payment",
         "payment-signature",
         "x-payment-proof",
-        "payment"
+        "payment",
+        "authorization"
     ]
     for header in possible_headers:
         val = request.headers.get(header)
         if val:
             val = val.strip()
+            if header.lower() == "authorization":
+                if val.lower().startswith("x402 "):
+                    return val[5:].strip()
+                elif val.lower().startswith("l402 "):
+                    return val[5:].strip()
+                elif val.lower().startswith("bearer "):
+                    return val[7:].strip()
             return val
-    
     return None
 
 
@@ -112,37 +129,38 @@ def create_402_response():
     encoded = base64.b64encode(envelope.encode('utf-8')).decode('utf-8')
     logger.info("🔐 402 Payment Required sent")
     return Response(
-        content=json.dumps({"error": "Payment header is required"}),
+        content="Payment Required",
         status_code=402,
-        headers={
-            "payment-required": encoded,
-            "content-type": "application/json"
-        }
+        headers={"payment-required": encoded}
     )
 
 
 # ============================================================
-# FACILITATOR VERIFICATION
+# FACILITATOR VERIFICATION (REQUIRED FOR SIGNAL)
 # ============================================================
 FACILITATOR_URL = "https://x402-facilitator-rnne.onrender.com"
 
 async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
     """Полная проверка платежа через свой фасилитатор"""
     try:
+        # 1. Декодируем payload
         decoded = base64.b64decode(payment_payload).decode("utf-8")
         payment_data = json.loads(decoded)
         
+        # 2. Извлекаем authorization для дополнительной проверки
         authorization = payment_data.get("payload", {}).get("authorization", {})
         
         if not authorization:
             logger.error("❌ No authorization in payment payload")
             return False
         
+        # Проверяем получателя
         to_addr = authorization.get("to")
         if to_addr.lower() != PAYTO_ADDRESS.lower():
             logger.warning(f"❌ Wrong recipient: {to_addr}")
             return False
         
+        # Проверяем сумму
         try:
             value = int(authorization.get("value", "0"))
         except:
@@ -152,6 +170,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
             logger.warning(f"❌ Amount too low: {value} (min {MIN_AMOUNT})")
             return False
         
+        # Проверяем временные метки
         current_time = int(time.time())
         
         try:
@@ -171,18 +190,21 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         
         logger.info(f"✅ Authorization verified: {value} USDC to {to_addr}")
         
+        # 3. Формируем paymentRequirements
         payment_requirements = {
             "x402Version": 2,
             "resource": PAYMENT_CONFIG.get("resource"),
             "accepts": PAYMENT_CONFIG.get("accepts")
         }
         
+        # 4. Формируем paymentPayload для фасилитатора
         payment_payload_data = {
             "x402Version": 2,
             "payload": payment_data.get("payload"),
             "extensions": payment_data.get("extensions", {})
         }
         
+        # 5. Отправляем verify в фасилитатор
         async with httpx.AsyncClient(timeout=20) as client:
             verify_response = await client.post(
                 f"{FACILITATOR_URL}/verify",
@@ -204,6 +226,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
             
             logger.info("✅ Signature verified by facilitator")
             
+            # 6. Отправляем settle в фасилитатор
             settle_response = await client.post(
                 f"{FACILITATOR_URL}/settle",
                 json={
@@ -226,7 +249,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
 
 
 # ============================================================
-# 8-ФАКТОРНЫЙ АНАЛИЗ (СОКРАЩЕН)
+# 8-ФАКТОРНЫЙ АНАЛИЗ
 # ============================================================
 
 def calculate_rsi(closes: list[float], period: int = 14) -> float:
@@ -442,10 +465,8 @@ async def payable_endpoint(request: Request):
 async def crypto_snapshot(request: Request):
     """SIGNAL ONLY AFTER FACILITATOR VERIFICATION"""
     
-    logger.info(f"📋 ALL HEADERS: {dict(request.headers)}")
-    
     payment = get_payment_header(request)
-    logger.info(f"🔑 Payment header: {payment}")
+    logger.info(f"🔑 Payment header detected: {'YES' if payment else 'MISSING'}")
     
     if not payment:
         return create_402_response()
