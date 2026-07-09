@@ -161,13 +161,10 @@ def create_402_response():
     envelope = json.dumps(PAYMENT_CONFIG, separators=(',', ':'))
     encoded = base64.b64encode(envelope.encode("utf-8")).decode("utf-8")
     logger.info("🔐 402 Payment Required sent")
-    return Response(
-        content="Payment Required",
+    return JSONResponse(
         status_code=402,
-        headers={
-            "payment-required": encoded,
-            "content-type": "text/plain"
-        }
+        content={"payment-required": encoded},
+        headers={"payment-required": encoded}
     )
 
 
