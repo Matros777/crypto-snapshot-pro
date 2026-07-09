@@ -163,7 +163,7 @@ KRAKEN_PAIRS_CACHE = {}
 KRAKEN_PAIRS_CACHE_TIME = 0
 
 async def get_all_kraken_pairs() -> dict:
-    """Загружает все доступные пары с Kraken"""
+    """Загружает все доступные пары с Kraken с несколькими форматами"""
     global KRAKEN_PAIRS_CACHE, KRAKEN_PAIRS_CACHE_TIME
     
     now = time.time()
@@ -184,12 +184,14 @@ async def get_all_kraken_pairs() -> dict:
             
             pairs = {}
             for pair_id, pair_data in data.get("result", {}).items():
-                # Берем только пары с USD
-                if pair_data.get("quote") == "ZUSD":
-                    base = pair_data.get("base")
-                    if base:
-                        symbol = base + "USDT"
-                        pairs[symbol] = pair_id
+                wsname = pair_data.get("wsname")
+                if wsname and wsname.endswith("/USD"):
+                    # "ETH/USD" → "ETHUSD"
+                    base = wsname.replace("/", "")
+                    # Добавляем все варианты для совместимости
+                    pairs[base] = pair_id           # ETHUSD
+                    pairs[base + "T"] = pair_id     # ETHUSDT
+                    pairs[base.replace("USD", "")] = pair_id  # ETH
             
             if not pairs:
                 logger.error("❌ No pairs loaded from Kraken")
