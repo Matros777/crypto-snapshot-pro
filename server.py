@@ -121,7 +121,7 @@ PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com/",
-        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports 500+ Binance pairs (BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
+        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports all Kraken USD pairs (500+ pairs including BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
         "mimeType": "application/json"
     },
     "accepts": [
@@ -157,30 +157,60 @@ def create_402_response():
 
 
 # ============================================================
-# Kraken API - ТОЛЬКО РЕАЛЬНЫЕ ДАННЫЕ, БЕЗ ФОЛБЭКОВ!
+# Kraken API - ДИНАМИЧЕСКАЯ ЗАГРУЗКА ВСЕХ ПАР, БЕЗ ФОЛБЭКОВ!
 # ============================================================
-KRAKEN_PAIRS = {
-    "BTCUSDT": "XXBTZUSD",
-    "ETHUSDT": "XETHZUSD",
-    "SOLUSDT": "SOLUSD",
-    "DOGEUSDT": "XDGUSD",
-    "XRPUSDT": "XXRPZUSD",
-    "ADAUSDT": "ADAUSD",
-    "DOTUSDT": "DOTUSD",
-    "LINKUSDT": "LINKUSD",
-    "AVAXUSDT": "AVAXUSD",
-    "MATICUSDT": "MATICUSD",
-    "UNIUSDT": "UNIUSD",
-    "ATOMUSDT": "ATOMUSD",
-    "LTCUSDT": "XLTCZUSD",
-    "BCHUSDT": "XBCHZUSD",
-    "NEARUSDT": "NEARUSD",
-    "FILUSDT": "FILUSD",
-    "APTUSDT": "APTUSD",
-    "ARBUSDT": "ARBUSD",
-    "OPUSDT": "OPUSD",
-    "SUIUSDT": "SUIUSD"
-}
+KRAKEN_PAIRS_CACHE = {}
+KRAKEN_PAIRS_CACHE_TIME = 0
+
+async def get_all_kraken_pairs() -> dict:
+    """Загружает все доступные пары с Kraken"""
+    global KRAKEN_PAIRS_CACHE, KRAKEN_PAIRS_CACHE_TIME
+    
+    now = time.time()
+    if KRAKEN_PAIRS_CACHE and now - KRAKEN_PAIRS_CACHE_TIME < 3600:
+        return KRAKEN_PAIRS_CACHE
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(f"{KRAKEN_API}/AssetPairs")
+            if response.status_code != 200:
+                logger.error(f"❌ Failed to load Kraken pairs: HTTP {response.status_code}")
+                raise HTTPException(status_code=503, detail="Market data temporarily unavailable")
+            
+            data = response.json()
+            if data.get("error"):
+                logger.error(f"❌ Kraken API error: {data['error']}")
+                raise HTTPException(status_code=503, detail="Market data temporarily unavailable")
+            
+            pairs = {}
+            for pair_id, pair_data in data.get("result", {}).items():
+                # Берем только пары с USD
+                if pair_data.get("quote") == "ZUSD":
+                    base = pair_data.get("base")
+                    if base:
+                        symbol = base + "USDT"
+                        pairs[symbol] = pair_id
+            
+            if not pairs:
+                logger.error("❌ No pairs loaded from Kraken")
+                raise HTTPException(status_code=503, detail="Market data temporarily unavailable")
+            
+            KRAKEN_PAIRS_CACHE = pairs
+            KRAKEN_PAIRS_CACHE_TIME = now
+            logger.info(f"✅ Loaded {len(pairs)} pairs from Kraken")
+            return pairs
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Failed to load Kraken pairs: {e}")
+        raise HTTPException(status_code=503, detail="Market data temporarily unavailable")
+
+async def get_kraken_pair(symbol: str) -> Optional[str]:
+    """Получает Kraken пару для символа"""
+    pairs = await get_all_kraken_pairs()
+    return pairs.get(symbol)
+
 
 async def fetch_ticker(symbol: str) -> dict:
     """Получение данных через Kraken - ТОЛЬКО РЕАЛЬНЫЕ ДАННЫЕ!"""
@@ -189,10 +219,14 @@ async def fetch_ticker(symbol: str) -> dict:
     if cache_key in _cache and now - _cache[cache_key]["time"] < _CACHE_TTL:
         return _cache[cache_key]["data"]
     
-    pair = KRAKEN_PAIRS.get(symbol)
+    # Проверяем поддерживается ли символ
+    pair = await get_kraken_pair(symbol)
     if not pair:
-        logger.error(f"❌ Symbol {symbol} not supported by Kraken")
-        raise HTTPException(status_code=404, detail=f"Symbol {symbol} not supported")
+        logger.warning(f"❌ Symbol {symbol} not supported by Kraken")
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Symbol {symbol} not supported. Available pairs: all Kraken USD pairs."
+        )
     
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -266,7 +300,7 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
     if cache_key in _cache and now - _cache[cache_key]["time"] < _CACHE_TTL:
         return _cache[cache_key]["data"]
     
-    pair = KRAKEN_PAIRS.get(symbol)
+    pair = await get_kraken_pair(symbol)
     if not pair:
         raise HTTPException(status_code=404, detail=f"Symbol {symbol} not supported")
     
@@ -592,9 +626,15 @@ async def crypto_snapshot(request: Request):
         total_score = long_score + short_score
         conviction = "VERY HIGH" if total_score >= 5 else "HIGH" if total_score >= 4 else "MEDIUM" if total_score >= 3 else "LOW"
 
-        # ============================================================
-        # КРАСИВЫЙ СТРУКТУРИРОВАННЫЙ ВЫВОД В ТЕРМИНАЛЕ
-        # ============================================================
+        # RSI статус
+        if rsi < 30:
+            rsi_status = "oversold"
+        elif rsi > 70:
+            rsi_status = "overbought"
+        else:
+            rsi_status = "neutral"
+
+        # Строим красивый вывод
         result = f"""
 ╔══════════════════════════════════════════════════════════════════╗
 ║  📊 CRYPTO SNAPSHOT PRO — {symbol.replace('USDT', '/USDT')}          ║
@@ -603,7 +643,7 @@ async def crypto_snapshot(request: Request):
 ╔══════════════════════════════════════════════════════════════════╗
 ║  🎯 СИГНАЛ                                                    ║
 ╠══════════════════════════════════════════════════════════════════╣
-║  {signal_desc:<56} ║
+║  {signal_desc} ║
 ║  Conviction: {conviction:<10}  |  Score: {long_score:.1f} LONG / {short_score:.1f} SHORT    ║
 ║  Reason: {'Bullish factors dominate.' if long_score > short_score else 'Bearish factors dominate.' if short_score > long_score else 'Mixed signals. Wait for confirmation.'} ║
 ╚══════════════════════════════════════════════════════════════════╝
@@ -612,7 +652,7 @@ async def crypto_snapshot(request: Request):
 ║  📈 ТЕХНИЧЕСКИЕ ИНДИКАТОРЫ                                    ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║  Price:  {format_price(current_price):<20}  24h Change: {change_24h:+.2f}% ║
-║  RSI(14): {rsi:.1f} ({'oversold' if rsi < 30 else 'overbought' if rsi > 70 else 'neutral'}){' ' * (40 - len(f'{rsi:.1f} ({'oversold' if rsi < 30 else 'overbought' if rsi > 70 else 'neutral'})'))}║
+║  RSI(14): {rsi:.1f} ({rsi_status}){' ' * (40 - len(f'{rsi:.1f} ({rsi_status})'))}║
 ║  EMA(20): {format_price(ema20):<20}  EMA(50): {format_price(ema50)} ║
 ║  Volume Ratio: {volume_ratio:.2f}x{' ' * (30 - len(f'{volume_ratio:.2f}x'))}║
 ╚══════════════════════════════════════════════════════════════════╝
@@ -655,7 +695,7 @@ async def root():
         "agentId": "3613",
         "version": "3.2.1",
         "data_source": "Kraken Public API (REAL DATA ONLY, NO FALLBACK)",
-        "supported_pairs": "BTC, ETH, SOL, DOGE, XRP, ADA, DOT, LINK, AVAX, MATIC, UNI, ATOM, LTC, BCH, NEAR, FIL, APT, ARB, OP, SUI",
+        "supported_pairs": "All Kraken USD pairs (500+ pairs)",
         "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "8-Factor Scoring"],
         "x402": True,
         "settle": "OpenFacilitator",
