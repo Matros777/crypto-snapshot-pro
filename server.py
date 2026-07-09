@@ -53,7 +53,6 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
     """Полная проверка платежа через OpenFacilitator"""
     logger.info("🔍 Starting facilitator verification...")
     
-    # Берем только accepts[0] для требований
     requirements = PAYMENT_CONFIG["accepts"][0]
     
     try:
@@ -61,8 +60,8 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
             verify_response = await client.post(
                 f"{FACILITATOR_URL}/verify",
                 json={
-                    "payment": payment_payload,
-                    "requirements": requirements
+                    "paymentPayload": payment_payload,
+                    "paymentRequirements": requirements
                 },
                 headers={"Content-Type": "application/json"}
             )
@@ -84,8 +83,8 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
             settle_response = await client.post(
                 f"{FACILITATOR_URL}/settle",
                 json={
-                    "payment": payment_payload,
-                    "requirements": requirements
+                    "paymentPayload": payment_payload,
+                    "paymentRequirements": requirements
                 },
                 headers={"Content-Type": "application/json"}
             )
@@ -394,7 +393,6 @@ async def payable_endpoint(request: Request):
 # ============================================================
 @app.api_route("/", methods=["GET", "POST"])
 async def crypto_snapshot(request: Request):
-    # Проверка оплаты x402
     payment_header = (
         request.headers.get("x-payment") or
         request.headers.get("payment-signature")
