@@ -162,7 +162,7 @@ def create_402_response():
         content="Payment Required",
         status_code=402,
         headers={
-            "payment-required": encoded,
+            "PAYMENT-REQUIRED": encoded,  # <-- ИСПРАВЛЕНО!
             "content-type": "text/plain"
         }
     )
@@ -367,6 +367,14 @@ async def payable_endpoint(request: Request):
     )
     if not payment_header:
         return create_402_response()
+    
+    valid = await verify_and_settle_with_facilitator(payment_header)
+    if not valid:
+        return Response(
+            content="Payment verification failed",
+            status_code=402
+        )
+    
     return {"status": "ok", "message": "Payment verified"}
 
 
