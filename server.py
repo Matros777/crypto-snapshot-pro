@@ -115,7 +115,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION
+# x402 PAYMENT CONFIGURATION - С BAZAAR EXTENSION
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
@@ -137,7 +137,32 @@ PAYMENT_CONFIG = {
                 "version": "2"
             }
         }
-    ]
+    ],
+    "extensions": {
+        "bazaar": {
+            "info": {
+                "input": {
+                    "type": "http",
+                    "method": "POST",
+                    "body": {},
+                    "bodyType": "json"
+                },
+                "output": {
+                    "type": "json",
+                    "example": {
+                        "message": {
+                            "role": "assistant",
+                            "content": "📊 CRYPTO SNAPSHOT PRO — BTC/USDT..."
+                        }
+                    }
+                }
+            },
+            "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object"
+            }
+        }
+    }
 }
 
 
@@ -186,12 +211,10 @@ async def get_all_kraken_pairs() -> dict:
             for pair_id, pair_data in data.get("result", {}).items():
                 wsname = pair_data.get("wsname")
                 if wsname and wsname.endswith("/USD"):
-                    # "ETH/USD" → "ETHUSD"
                     base = wsname.replace("/", "")
-                    # Добавляем все варианты для совместимости
-                    pairs[base] = pair_id           # ETHUSD
-                    pairs[base + "T"] = pair_id     # ETHUSDT
-                    pairs[base.replace("USD", "")] = pair_id  # ETH
+                    pairs[base] = pair_id
+                    pairs[base + "T"] = pair_id
+                    pairs[base.replace("USD", "")] = pair_id
             
             if not pairs:
                 logger.error("❌ No pairs loaded from Kraken")
@@ -221,7 +244,6 @@ async def fetch_ticker(symbol: str) -> dict:
     if cache_key in _cache and now - _cache[cache_key]["time"] < _CACHE_TTL:
         return _cache[cache_key]["data"]
     
-    # Проверяем поддерживается ли символ
     pair = await get_kraken_pair(symbol)
     if not pair:
         logger.warning(f"❌ Symbol {symbol} not supported by Kraken")
@@ -253,7 +275,6 @@ async def fetch_ticker(symbol: str) -> dict:
             if price == 0:
                 raise HTTPException(status_code=503, detail="Invalid price data")
             
-            # Получаем цену 24 часа назад из OHLC для расчета процента
             try:
                 ohlc_response = await client.get(
                     f"{KRAKEN_API}/OHLC",
@@ -524,7 +545,7 @@ async def payable_endpoint(request: Request):
 
 
 # ============================================================
-# ОСНОВНОЙ ЭНДПОИНТ - С КРАСИВЫМ ВЫВОДОМ В ТЕРМИНАЛЕ
+# ОСНОВНОЙ ЭНДПОИНТ
 # ============================================================
 @app.api_route("/", methods=["GET", "POST"])
 async def crypto_snapshot(request: Request):
@@ -628,7 +649,6 @@ async def crypto_snapshot(request: Request):
         total_score = long_score + short_score
         conviction = "VERY HIGH" if total_score >= 5 else "HIGH" if total_score >= 4 else "MEDIUM" if total_score >= 3 else "LOW"
 
-        # RSI статус
         if rsi < 30:
             rsi_status = "oversold"
         elif rsi > 70:
@@ -636,7 +656,6 @@ async def crypto_snapshot(request: Request):
         else:
             rsi_status = "neutral"
 
-        # Строим красивый вывод
         result = f"""
 ╔══════════════════════════════════════════════════════════════════╗
 ║  📊 CRYPTO SNAPSHOT PRO — {symbol.replace('USDT', '/USDT')}          ║
