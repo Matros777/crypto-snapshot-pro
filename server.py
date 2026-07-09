@@ -13,7 +13,6 @@ import base64
 import json
 import logging
 import sys
-import urllib.parse
 from typing import Optional, Any
 
 # ============================================================
@@ -47,7 +46,7 @@ class AgentResponse(BaseModel):
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION - С extra ДЛЯ AWAL
+# x402 PAYMENT CONFIGURATION - МИНИМАЛЬНАЯ ВЕРСИЯ
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
@@ -66,44 +65,11 @@ PAYMENT_CONFIG = {
             "maxTimeoutSeconds": 300
         }
     ]
-},
-    "domain": {
-        "name": "USD Coin",
-        "version": "2",
-        "chainId": 8453,
-        "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-    },
-    "extensions": {
-        "bazaar": {
-            "info": {
-                "input": {
-                    "type": "http",
-                    "method": "POST",
-                    "body": {},
-                    "bodyType": "json"
-                },
-                "output": {
-                    "type": "json",
-                    "example": {
-                        "message": {
-                            "role": "assistant",
-                            "content": "📊 CRYPTO SNAPSHOT PRO — BTC/USDT..."
-                        }
-                    }
-                }
-            },
-            "schema": {
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "type": "object"
-            }
-        }
-    }
 }
 
 
 def get_payment_header(request: Request) -> Optional[str]:
     """Универсальный поиск платежного заголовка"""
-    # Сначала ищем Authorization (от awal)
     auth = request.headers.get("authorization")
     if auth:
         auth = auth.strip()
@@ -115,7 +81,6 @@ def get_payment_header(request: Request) -> Optional[str]:
             return auth[7:].strip()
         return auth
     
-    # Если нет Authorization, ищем другие заголовки
     possible_headers = [
         "x-payment",
         "payment-signature",
@@ -135,20 +100,19 @@ def create_402_response():
     """Возвращает 402 Payment Required с заголовком payment-required"""
     envelope = json.dumps(PAYMENT_CONFIG, separators=(',', ':'))
     encoded = base64.b64encode(envelope.encode('utf-8')).decode('utf-8')
-    # НЕТ urllib.parse.quote()!
     logger.info("🔐 402 Payment Required sent")
     return Response(
         content=json.dumps({"error": "Payment header is required"}),
         status_code=402,
         headers={
-            "payment-required": encoded,  # <-- ЧИСТЫЙ BASE64!
+            "payment-required": encoded,
             "content-type": "application/json"
         }
     )
 
 
 # ============================================================
-# FACILITATOR VERIFICATION (REQUIRED FOR SIGNAL)
+# FACILITATOR VERIFICATION
 # ============================================================
 FACILITATOR_URL = "https://x402-facilitator-rnne.onrender.com"
 
@@ -200,8 +164,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         payment_requirements = {
             "x402Version": 2,
             "resource": PAYMENT_CONFIG.get("resource"),
-            "accepts": PAYMENT_CONFIG.get("accepts"),
-            "domain": PAYMENT_CONFIG.get("domain")
+            "accepts": PAYMENT_CONFIG.get("accepts")
         }
         
         payment_payload_data = {
@@ -253,7 +216,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
 
 
 # ============================================================
-# 8-ФАКТОРНЫЙ АНАЛИЗ
+# 8-ФАКТОРНЫЙ АНАЛИЗ (СОКРАЩЕН)
 # ============================================================
 
 def calculate_rsi(closes: list[float], period: int = 14) -> float:
@@ -469,14 +432,13 @@ async def payable_endpoint(request: Request):
 async def crypto_snapshot(request: Request):
     """SIGNAL ONLY AFTER FACILITATOR VERIFICATION"""
     
-    # Логируем ВСЕ заголовки
     logger.info(f"📋 ALL HEADERS: {dict(request.headers)}")
     
     payment = get_payment_header(request)
     logger.info(f"🔑 Payment header: {payment}")
     
     if not payment:
-        return create_402_response()  # <-- ЭТО ИСПРАВЛЕНО!
+        return create_402_response()
     
     valid = await verify_and_settle_with_facilitator(payment)
     if not valid:
