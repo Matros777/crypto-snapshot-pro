@@ -217,9 +217,31 @@ async def fetch_ticker(symbol: str) -> dict:
             if price == 0:
                 raise HTTPException(status_code=503, detail="Invalid price data")
             
+            # Получаем цену 24 часа назад из OHLC для расчета процента
+            try:
+                ohlc_response = await client.get(
+                    f"{KRAKEN_API}/OHLC",
+                    params={"pair": pair, "interval": 1440, "count": 2}
+                )
+                if ohlc_response.status_code == 200:
+                    ohlc_data = ohlc_response.json()
+                    if not ohlc_data.get("error"):
+                        ohlc_list = list(ohlc_data.get("result", {}).values())[0]
+                        if len(ohlc_list) >= 2:
+                            old_price = float(ohlc_list[-2][4])
+                            change_24h = ((price - old_price) / old_price) * 100
+                        else:
+                            change_24h = 0
+                    else:
+                        change_24h = 0
+                else:
+                    change_24h = 0
+            except:
+                change_24h = 0
+            
             result = {
                 "price": price,
-                "change": float(result_data.get("p", [0])[0]),
+                "change": change_24h,
                 "high": float(result_data.get("h", [price])[0]),
                 "low": float(result_data.get("l", [price])[0]),
                 "volume": float(result_data.get("v", [0])[0]),
@@ -227,7 +249,7 @@ async def fetch_ticker(symbol: str) -> dict:
             }
             
             _cache[cache_key] = {"data": result, "time": now}
-            logger.info(f"✅ {symbol} price: ${price}")
+            logger.info(f"✅ {symbol} price: ${price}, change: {change_24h:.2f}%")
             return result
             
     except HTTPException:
@@ -253,7 +275,7 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
             logger.info(f"📊 Fetching klines for {symbol} from Kraken...")
             response = await client.get(
                 f"{KRAKEN_API}/OHLC",
-                params={"pair": pair, "interval": 1440, "since": int(time.time()) - 50 * 86400}
+                params={"pair": pair, "interval": 1440, "count": limit}
             )
             
             if response.status_code != 200:
@@ -466,7 +488,7 @@ async def payable_endpoint(request: Request):
 
 
 # ============================================================
-# ОСНОВНОЙ ЭНДПОИНТ
+# ОСНОВНОЙ ЭНДПОИНТ - С КРАСИВЫМ ВЫВОДОМ В ТЕРМИНАЛЕ
 # ============================================================
 @app.api_route("/", methods=["GET", "POST"])
 async def crypto_snapshot(request: Request):
@@ -570,29 +592,47 @@ async def crypto_snapshot(request: Request):
         total_score = long_score + short_score
         conviction = "VERY HIGH" if total_score >= 5 else "HIGH" if total_score >= 4 else "MEDIUM" if total_score >= 3 else "LOW"
 
-        result = f"""📊 CRYPTO SNAPSHOT PRO — {symbol.replace('USDT', '/USDT')}
-{signal_desc}
-📊 Conviction: {conviction}
-🎯 Score: {long_score} LONG / {short_score} SHORT
-💡 Reason: {'Bullish factors dominate.' if long_score > short_score else 'Bearish factors dominate.' if short_score > long_score else 'Mixed signals. Wait for confirmation.'}
-📈 TECHNICALS
-• Price: {format_price(current_price)} ({change_24h:+.2f}%)
-• RSI(14): {rsi:.1f} ({'oversold' if rsi < 30 else 'overbought' if rsi > 70 else 'neutral'})
-• EMA(20): {format_price(ema20)}
-• EMA(50): {format_price(ema50)}
-• Volume Ratio: {volume_ratio:.2f}x
-🎯 STRATEGY
-• Entry: {format_price(entry)}
-• Target: {format_price(target)}
-• Stop: {format_price(stop)}
-• Risk/Reward: 1:{risk_reward:.2f}
-📌 KEY LEVELS
-• Support: {format_price(support)}
-• Resistance: {format_price(resistance)}
-• 24h High: {format_price(high_24h)}
-• 24h Low: {format_price(low_24h)}
+        # ============================================================
+        # КРАСИВЫЙ СТРУКТУРИРОВАННЫЙ ВЫВОД В ТЕРМИНАЛЕ
+        # ============================================================
+        result = f"""
+╔══════════════════════════════════════════════════════════════════╗
+║  📊 CRYPTO SNAPSHOT PRO — {symbol.replace('USDT', '/USDT')}          ║
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║  🎯 СИГНАЛ                                                    ║
+╠══════════════════════════════════════════════════════════════════╣
+║  {signal_desc:<56} ║
+║  Conviction: {conviction:<10}  |  Score: {long_score:.1f} LONG / {short_score:.1f} SHORT    ║
+║  Reason: {'Bullish factors dominate.' if long_score > short_score else 'Bearish factors dominate.' if short_score > long_score else 'Mixed signals. Wait for confirmation.'} ║
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║  📈 ТЕХНИЧЕСКИЕ ИНДИКАТОРЫ                                    ║
+╠══════════════════════════════════════════════════════════════════╣
+║  Price:  {format_price(current_price):<20}  24h Change: {change_24h:+.2f}% ║
+║  RSI(14): {rsi:.1f} ({'oversold' if rsi < 30 else 'overbought' if rsi > 70 else 'neutral'}){' ' * (40 - len(f'{rsi:.1f} ({'oversold' if rsi < 30 else 'overbought' if rsi > 70 else 'neutral'})'))}║
+║  EMA(20): {format_price(ema20):<20}  EMA(50): {format_price(ema50)} ║
+║  Volume Ratio: {volume_ratio:.2f}x{' ' * (30 - len(f'{volume_ratio:.2f}x'))}║
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║  🎯 СТРАТЕГИЯ                                                 ║
+╠══════════════════════════════════════════════════════════════════╣
+║  Entry:  {format_price(entry):<20}  Target: {format_price(target)} ║
+║  Stop:   {format_price(stop):<20}  Risk/Reward: 1:{risk_reward:.2f} ║
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║  📌 КЛЮЧЕВЫЕ УРОВНИ                                           ║
+╠══════════════════════════════════════════════════════════════════╣
+║  Support:  {format_price(support):<20}  Resistance: {format_price(resistance)} ║
+║  24h High: {format_price(high_24h):<20}  24h Low:  {format_price(low_24h)} ║
+╚══════════════════════════════════════════════════════════════════╝
+
+⚠️  Risk Disclosure: This is NOT financial advice. Always manage risk. Past performance does not guarantee future results.
 """
-        result += "\n\n⚠️ Risk Disclosure: This is NOT financial advice. Always manage risk. Past performance does not guarantee future results."
        
         return AgentResponse(message={"role": "assistant", "content": result})
 
