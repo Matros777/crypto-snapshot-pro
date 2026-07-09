@@ -113,7 +113,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION - С ПОДДЕРЖКОЙ AWAL
+# x402 PAYMENT CONFIGURATION
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
@@ -156,8 +156,7 @@ def create_402_response():
         content="Payment Required",
         status_code=402,
         headers={
-            "payment-required": encoded,    # нижний регистр для awal
-            "PAYMENT-REQUIRED": encoded,    # верхний регистр для x402 v2
+            "payment-required": encoded,
             "content-type": "text/plain"
         }
     )
