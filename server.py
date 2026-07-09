@@ -113,7 +113,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION - УПРОЩЕННАЯ ВЕРСИЯ ДЛЯ AWAL
+# x402 PAYMENT CONFIGURATION - С ПОДДЕРЖКОЙ AWAL
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
@@ -138,7 +138,9 @@ PAYMENT_CONFIG = {
             },
             "extra": {
                 "name": "USD Coin",
-                "version": "2"
+                "version": "2",
+                "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                "assetTransferMethod": "eip3009"
             }
         }
     ]
@@ -154,8 +156,8 @@ def create_402_response():
         content="Payment Required",
         status_code=402,
         headers={
-            "payment-required": encoded,  # нижний регистр для awal
-            "PAYMENT-REQUIRED": encoded,  # верхний регистр для x402 v2
+            "payment-required": encoded,    # нижний регистр для awal
+            "PAYMENT-REQUIRED": encoded,    # верхний регистр для x402 v2
             "content-type": "text/plain"
         }
     )
