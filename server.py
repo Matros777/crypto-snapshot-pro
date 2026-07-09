@@ -357,7 +357,8 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
 async def payable_endpoint(request: Request):
     payment_header = (
         request.headers.get("x-payment") or
-        request.headers.get("payment-signature")
+        request.headers.get("payment-signature") or
+        request.headers.get("authorization")
     )
     if not payment_header:
         return create_402_response()
@@ -379,7 +380,8 @@ async def payable_endpoint(request: Request):
 async def crypto_snapshot(request: Request):
     payment_header = (
         request.headers.get("x-payment") or
-        request.headers.get("payment-signature")
+        request.headers.get("payment-signature") or
+        request.headers.get("authorization")
     )
     
     if not payment_header:
