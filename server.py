@@ -110,7 +110,7 @@ PAYMENT_CONFIG = {
     },
     "accepts": [
         {
-            "scheme": "v2-eip155-exact",  # ← ИЗМЕНЕНИЕ
+            "scheme": "v2-eip155-exact",
             "network": "eip155:8453",
             "amount": "25000",
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -127,8 +127,7 @@ PAYMENT_CONFIG = {
                 "version": "2"
             }
         }
-    ]
-},
+    ],
     "extensions": {
         "bazaar": {
             "info": {
