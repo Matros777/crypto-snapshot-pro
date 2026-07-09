@@ -148,16 +148,16 @@ PAYMENT_CONFIG = {
 
 
 def create_402_response():
-    """Возвращает 402 Payment Required с JSONResponse"""
+    """Возвращает 402 Payment Required с правильным заголовком"""
     envelope = json.dumps(PAYMENT_CONFIG, separators=(',', ':'))
     encoded = base64.b64encode(envelope.encode("utf-8")).decode("utf-8")
     logger.info("🔐 402 Payment Required sent")
-    return JSONResponse(
+    return Response(
+        content=json.dumps({"error": "Payment Required"}),
         status_code=402,
-        content={"error": "Payment Required"},
         headers={
             "PAYMENT-REQUIRED": encoded,
-            "payment-required": encoded
+            "Content-Type": "application/json"
         }
     )
 
@@ -355,9 +355,8 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
 @app.post("/payable")
 async def payable_endpoint(request: Request):
     payment_header = (
-        request.headers.get("x-payment") or
-        request.headers.get("payment-signature") or
-        request.headers.get("authorization")
+        request.headers.get("PAYMENT-SIGNATURE") or
+        request.headers.get("X-PAYMENT")
     )
     if not payment_header:
         return create_402_response()
@@ -378,9 +377,8 @@ async def payable_endpoint(request: Request):
 @app.api_route("/", methods=["GET", "POST"])
 async def crypto_snapshot(request: Request):
     payment_header = (
-        request.headers.get("x-payment") or
-        request.headers.get("payment-signature") or
-        request.headers.get("authorization")
+        request.headers.get("PAYMENT-SIGNATURE") or
+        request.headers.get("X-PAYMENT")
     )
     
     if not payment_header:
@@ -515,8 +513,8 @@ async def health_check():
     return {"status": "ok", "service": "crypto-snapshot-pro"}
 
 
-@app.get("/")
-async def root():
+@app.get("/info")
+async def info():
     return {
         "service": "Crypto Snapshot Pro x402 Agent",
         "agentId": "3613",
@@ -530,5 +528,6 @@ async def root():
             "/": "Main endpoint (POST/GET)",
             "/payable": "x402 verification endpoint (POST)",
             "/health": "Health check (GET)",
+            "/info": "Service info (GET)"
         }
     }
