@@ -113,12 +113,12 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION
+# x402 PAYMENT CONFIGURATION - ИСПРАВЛЕННАЯ ВЕРСИЯ
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
-        "url": "https://crypto-snapshot-pro.onrender.com",
+        "url": "https://crypto-snapshot-pro.onrender.com/",
         "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports 500+ Binance pairs (BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
         "mimeType": "application/json"
     },
@@ -143,46 +143,21 @@ PAYMENT_CONFIG = {
                 "assetTransferMethod": "eip3009"
             }
         }
-    ],
-    "extensions": {
-        "bazaar": {
-            "info": {
-                "input": {
-                    "type": "http",
-                    "method": "POST",
-                    "body": {},
-                    "bodyType": "json"
-                },
-                "output": {
-                    "type": "json",
-                    "example": {
-                        "message": {
-                            "role": "assistant",
-                            "content": "📊 CRYPTO SNAPSHOT PRO — BTC/USDT..."
-                        }
-                    }
-                }
-            },
-            "schema": {
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "type": "object"
-            }
-        }
-    }
+    ]
 }
 
 
 def create_402_response():
-    """Возвращает 402 Payment Required"""
+    """Возвращает 402 Payment Required с JSONResponse"""
     envelope = json.dumps(PAYMENT_CONFIG, separators=(',', ':'))
     encoded = base64.b64encode(envelope.encode("utf-8")).decode("utf-8")
     logger.info("🔐 402 Payment Required sent")
-    return Response(
-        content="Payment Required",
+    return JSONResponse(
         status_code=402,
+        content={"error": "Payment Required"},
         headers={
             "PAYMENT-REQUIRED": encoded,
-            "content-type": "text/plain"
+            "payment-required": encoded
         }
     )
 
@@ -381,7 +356,8 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
 async def payable_endpoint(request: Request):
     payment_header = (
         request.headers.get("x-payment") or
-        request.headers.get("payment-signature")
+        request.headers.get("payment-signature") or
+        request.headers.get("authorization")
     )
     if not payment_header:
         return create_402_response()
@@ -403,7 +379,8 @@ async def payable_endpoint(request: Request):
 async def crypto_snapshot(request: Request):
     payment_header = (
         request.headers.get("x-payment") or
-        request.headers.get("payment-signature")
+        request.headers.get("payment-signature") or
+        request.headers.get("authorization")
     )
     
     if not payment_header:
