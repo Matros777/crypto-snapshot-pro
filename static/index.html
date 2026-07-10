@@ -35,16 +35,29 @@
             gap: 12px;
         }
         .logo h1 {
-            font-size: 24px;
-            font-weight: 700;
-            background: linear-gradient(90deg, #00d4ff, #7b2ffc);
+            font-size: 28px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ffd700, #ffb800, #ff8c00);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 40px rgba(255, 215, 0, 0.15);
+            letter-spacing: 0.5px;
+            font-family: 'Georgia', serif;
+        }
+        .logo h1 .emoji {
+            -webkit-text-fill-color: initial;
+            background: none;
+            text-shadow: none;
         }
         .logo span {
-            font-size: 12px;
-            color: #888;
-            -webkit-text-fill-color: #888;
+            font-size: 13px;
+            color: #ffd700;
+            -webkit-text-fill-color: #ffd700;
+            opacity: 0.7;
+            display: block;
+            margin-top: 2px;
+            letter-spacing: 1px;
+            font-weight: 300;
         }
         .wallet-status {
             background: rgba(255,255,255,0.08);
@@ -56,7 +69,7 @@
             transition: all 0.3s;
         }
         .wallet-status:hover { background: rgba(255,255,255,0.15); }
-        .wallet-status.connected { border-color: #00d4ff; color: #00d4ff; }
+        .wallet-status.connected { border-color: #ffd700; color: #ffd700; }
         .card {
             background: rgba(255,255,255,0.03);
             border-radius: 16px;
@@ -88,9 +101,9 @@
         }
         .pair-btn:hover { background: rgba(255,255,255,0.12); color: #fff; }
         .pair-btn.active {
-            background: rgba(0,212,255,0.2);
-            border-color: #00d4ff;
-            color: #00d4ff;
+            background: rgba(255,215,0,0.15);
+            border-color: #ffd700;
+            color: #ffd700;
         }
         .input-group {
             display: flex;
@@ -109,17 +122,17 @@
             transition: all 0.3s;
         }
         .input-group input:focus {
-            border-color: #00d4ff;
-            box-shadow: 0 0 20px rgba(0,212,255,0.1);
+            border-color: #ffd700;
+            box-shadow: 0 0 20px rgba(255,215,0,0.1);
         }
         .input-group input::placeholder { color: #555; }
         .btn-primary {
-            background: linear-gradient(90deg, #00d4ff, #7b2ffc);
+            background: linear-gradient(135deg, #ffd700, #ff8c00);
             border: none;
             padding: 12px 32px;
             border-radius: 12px;
-            color: #fff;
-            font-weight: 600;
+            color: #0a0e27;
+            font-weight: 700;
             font-size: 16px;
             cursor: pointer;
             transition: all 0.3s;
@@ -127,7 +140,7 @@
         }
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 30px rgba(0,212,255,0.3);
+            box-shadow: 0 8px 30px rgba(255,215,0,0.3);
         }
         .btn-primary:disabled {
             opacity: 0.5;
@@ -144,13 +157,13 @@
         .info-row:last-child { border-bottom: none; }
         .info-label { color: #888; }
         .info-value { color: #fff; font-weight: 500; }
-        .info-value.usdc { color: #00d4ff; }
+        .info-value.usdc { color: #ffd700; }
         .signal-box {
             background: rgba(255,255,255,0.03);
             border-radius: 16px;
             padding: 24px;
             margin-top: 20px;
-            border: 1px solid rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,215,0,0.1);
             display: none;
         }
         .signal-box.show {
@@ -169,7 +182,11 @@
             flex-wrap: wrap;
             gap: 8px;
         }
-        .signal-symbol { font-size: 20px; font-weight: 700; }
+        .signal-symbol {
+            font-size: 22px;
+            font-weight: 700;
+            color: #ffd700;
+        }
         .signal-status {
             padding: 4px 16px;
             border-radius: 20px;
@@ -185,8 +202,8 @@
             color: #ff4444;
         }
         .signal-status.hold {
-            background: rgba(255,255,255,0.1);
-            color: #ffaa00;
+            background: rgba(255,215,0,0.2);
+            color: #ffd700;
         }
         .signal-grid {
             display: grid;
@@ -198,6 +215,7 @@
             background: rgba(255,255,255,0.04);
             padding: 12px;
             border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.04);
         }
         .signal-item .label {
             font-size: 11px;
@@ -209,31 +227,33 @@
             font-size: 18px;
             font-weight: 600;
             margin-top: 4px;
+            color: #fff;
         }
         .signal-item .value.green { color: #00d4ff; }
         .signal-item .value.red { color: #ff4444; }
-        .signal-item .value.gold { color: #ffaa00; }
+        .signal-item .value.gold { color: #ffd700; }
         .signal-full {
             margin-top: 16px;
             padding: 16px;
             background: rgba(255,255,255,0.02);
             border-radius: 10px;
             font-family: monospace;
-            font-size: 12px;
+            font-size: 13px;
             white-space: pre-wrap;
-            color: #aaa;
+            color: #c0c0c0;
             max-height: 400px;
             overflow-y: auto;
+            line-height: 1.6;
         }
         .signal-full::-webkit-scrollbar { width: 4px; }
         .signal-full::-webkit-scrollbar-track { background: rgba(255,255,255,0.02); }
-        .signal-full::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+        .signal-full::-webkit-scrollbar-thumb { background: rgba(255,215,0,0.2); border-radius: 2px; }
         .loading {
             display: inline-block;
             width: 16px;
             height: 16px;
             border: 2px solid rgba(255,255,255,0.1);
-            border-top-color: #00d4ff;
+            border-top-color: #ffd700;
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
             margin-right: 8px;
@@ -246,7 +266,7 @@
             font-size: 12px;
             color: #555;
         }
-        .footer a { color: #00d4ff; text-decoration: none; }
+        .footer a { color: #ffd700; text-decoration: none; }
         .footer a:hover { text-decoration: underline; }
         .error {
             color: #ff4444;
@@ -258,8 +278,8 @@
         }
         .error.show { display: block; }
         .success {
-            color: #00d4ff;
-            background: rgba(0,212,255,0.1);
+            color: #ffd700;
+            background: rgba(255,215,0,0.1);
             padding: 12px;
             border-radius: 10px;
             margin-top: 12px;
@@ -267,7 +287,7 @@
         }
         .success.show { display: block; }
         .tx-link {
-            color: #00d4ff;
+            color: #ffd700;
             word-break: break-all;
             font-family: monospace;
             font-size: 12px;
@@ -365,7 +385,7 @@
                 </div>
             </div>
             <div class="signal-full" id="signalFull"></div>
-            <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06);font-size:12px;color:#555;">
+            <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,215,0,0.1);font-size:12px;color:#555;">
                 <div>📖 <a href="https://gist.github.com/Matros777/c5d95532248eaaf2b86fd04f8a2753b7" target="_blank">Full Guide</a> · 🐦 <a href="https://x.com/VitalijMatros" target="_blank">Twitter</a> · 🌐 <a href="https://openx402.ai/projects/0x5b7efd37546d6bb02463339ceaddd80997ac97b3" target="_blank">OpenX402</a></div>
             </div>
         </div>
@@ -522,10 +542,7 @@
             signalBox.classList.remove('show');
 
             try {
-                // 1. Создаем контракт USDC с правильным ABI
                 const usdcContract = new ethers.Contract(USDC, USDC_ABI, signer);
-
-                // 2. Проверяем баланс
                 const decimals = await usdcContract.decimals();
                 const balance = await usdcContract.balanceOf(address);
                 const formatted = ethers.utils.formatUnits(balance, decimals);
@@ -538,7 +555,6 @@
                     return;
                 }
 
-                // 3. Отправляем USDC
                 const amount = ethers.utils.parseUnits(PRICE, decimals);
                 
                 showSuccess(`⏳ Sending ${PRICE} USDC... Please confirm in MetaMask.`);
@@ -554,7 +570,6 @@
                 showSuccess(`✅ Payment confirmed! Getting your signal...`);
                 getSignalBtn.innerHTML = '<span class="loading"></span> Getting signal...';
 
-                // 4. Получаем сигнал с tx_hash
                 const response = await fetch(AGENT_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -564,7 +579,6 @@
                     })
                 });
 
-                // 5. Обрабатываем ответ
                 if (response.status === 200) {
                     const data = await response.json();
                     displaySignal(data, symbol);
@@ -596,15 +610,19 @@
         // DISPLAY SIGNAL
         // ============================================================
         function displaySignal(data, symbol) {
-            const content = data.message?.content || '';
+            let content = data.message?.content || '';
 
+            // Убираем звездочки ** **
+            content = content.replace(/\*\*/g, '');
+
+            // Парсим значения из текста
             const signalMatch = content.match(/RECOMMENDATION:\s*(LONG|SHORT|HOLD)/i);
             const status = signalMatch ? signalMatch[1] : 'HOLD';
 
             const entryMatch = content.match(/ENTRY ZONE:\s*\$?([\d,\.]+)/i);
             const entry = entryMatch ? entryMatch[1] : '—';
 
-            const targetMatch = content.match(/TARGET 1:\s*\$?([\d,\.]+)/i);
+            const targetMatch = content.match(/TARGET\s*1:\s*\$?([\d,\.]+)/i);
             const target = targetMatch ? targetMatch[1] : '—';
 
             const stopMatch = content.match(/STOP LOSS:\s*\$?([\d,\.]+)/i);
