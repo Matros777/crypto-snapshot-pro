@@ -28,6 +28,27 @@ logger = logging.getLogger("crypto-snapshot")
 
 app = FastAPI(title="Crypto Snapshot Pro x402 Agent")
 
+# ============================================================
+# ГЛАВНАЯ СТРАНИЦА — РЕДИРЕКТ НА /app (ДОЛЖЕН БЫТЬ ПЕРВЫМ!)
+# ============================================================
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/app")
+
+# ============================================================
+# ЯНДЕКС ФАЙЛ ДЛЯ ВЕРИФИКАЦИИ
+# ============================================================
+@app.get("/yandex_d100e212bdd18c7b.html")
+async def yandex_verify():
+    return HTMLResponse("""
+    <html>
+        <head>
+            <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+        </head>
+        <body>Verification: d100e212bdd18c7b</body>
+    </html>
+    """)
+
 ASI_API_KEY = os.getenv("ASI_API_KEY", "")
 ASI_MODELS = [
     {"id": "asi1", "name": "ASI1"},
@@ -716,9 +737,9 @@ async def payable_endpoint(request: Request):
     return {"status": "ok", "message": "Payment verified"}
 
 # ============================================================
-# ГЛАВНЫЙ API — НА /
+# ГЛАВНЫЙ API — ТОЛЬКО POST (НЕ GET!)
 # ============================================================
-@app.api_route("/", methods=["GET", "POST"])
+@app.post("/")
 async def crypto_snapshot(request: Request):
     symbol = None
     tx_hash = None
@@ -745,7 +766,7 @@ async def crypto_snapshot(request: Request):
     if not symbol:
         return AgentResponse(message={
             "role": "assistant",
-            "content": "📊 CRYPTO SNAPSHOT PRO\n\nSend a symbol to analyze.\n\nExamples:\n• BTC\n• ETH\n• SOL\n• DOGE\n• XRP\n\nUsage: POST {\"symbol\": \"BTC\"} or GET ?symbol=BTC"
+            "content": "📊 CRYPTO SNAPSHOT PRO\n\nSend a symbol to analyze.\n\nExamples:\n• BTC\n• ETH\n• SOL\n• DOGE\n• XRP\n\nUsage: POST {\"symbol\": \"BTC\"}"
         })
 
     if tx_hash:
@@ -933,26 +954,3 @@ async def web_app():
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "crypto-snapshot-pro", "proxy_enabled": USE_PROXY}
-
-# ============================================================
-# ГЛАВНАЯ СТРАНИЦА — РЕДИРЕКТ НА /app (ДОЛЖЕН БЫТЬ ПЕРВЫМ!)
-# ============================================================
-from fastapi.responses import RedirectResponse
-
-@app.get("/")
-async def root():
-    return RedirectResponse(url="/app")
-
-# ============================================================
-# ЯНДЕКС ФАЙЛ ДЛЯ ВЕРИФИКАЦИИ
-# ============================================================
-@app.get("/yandex_d100e212bdd18c7b.html")
-async def yandex_verify():
-    return HTMLResponse("""
-    <html>
-        <head>
-            <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-        </head>
-        <body>Verification: d100e212bdd18c7b</body>
-    </html>
-    """)
