@@ -716,10 +716,16 @@ async def payable_endpoint(request: Request):
     return {"status": "ok", "message": "Payment verified"}
 
 # ============================================================
-# API — НА /api (ПЕРЕНЕСЕНО С /)
+# ГЛАВНЫЙ API — НА /
 # ============================================================
-@app.api_route("/api", methods=["GET", "POST"])
+@app.api_route("/", methods=["GET", "POST"])
 async def crypto_snapshot(request: Request):
+    # Проверяем, не отдает ли корень HTML для Яндекса
+    if request.method == "GET" and not request.headers.get("x-payment"):
+        # Пропускаем GET запросы без оплаты — они отдаются через root()
+        # Но это уже обработано в @app.get("/")
+        pass
+    
     symbol = None
     tx_hash = None
 
@@ -820,8 +826,7 @@ async def crypto_snapshot(request: Request):
             risk_reward = (target - entry) / (entry - stop) if entry > stop else 0
         elif signal == "SHORT":
             entry = resistance - (resistance - support) * 0.2
-            target = entry - (resistance - entry) * 2
-            stop = resistance + atr_proxy * 0.5
+            target = entry - (resistance - entry) * 2            stop = resistance + atr_proxy * 0.5
             risk_reward = (entry - target) / (stop - entry) if stop > entry else 0
         else:
             entry = current_price
@@ -935,7 +940,7 @@ async def health_check():
     return {"status": "ok", "service": "crypto-snapshot-pro", "proxy_enabled": USE_PROXY}
 
 # ============================================================
-# ГЛАВНАЯ СТРАНИЦА — ДЛЯ ЯНДЕКСА И ПОЛЬЗОВАТЕЛЕЙ
+# ГЛАВНАЯ СТРАНИЦА — ДЛЯ ЯНДЕКСА
 # ============================================================
 @app.get("/")
 async def root():
