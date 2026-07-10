@@ -13,7 +13,12 @@
     <meta name="keywords" content="crypto signals, AI trading, Bitcoin, Ethereum, Solana, technical analysis, x402, USDC, Base network">
     <meta name="robots" content="index, follow">
     <link rel="canonical" href="https://crypto-snapshot-pro.onrender.com/app">
-    <meta name="google-site-verification" content="your-verification-code">
+    
+    <!-- Google Search Console -->
+    <meta name="google-site-verification" content="LNTC7t6OrMfNa9kA3Z781_R7ytdc40_i0cv5n20dOWk" />
+    
+    <!-- Yandex Webmaster -->
+    <meta name="yandex-verification" content="d100e212bdd18c7b" />
     
     <meta property="og:title" content="Crypto Snapshot Pro — AI Trading Signals">
     <meta property="og:description" content="AI-powered crypto signals with x402 payments. 0.025 USDC per request. LONG/SHORT/HOLD with entry, target, stop levels.">
@@ -161,7 +166,6 @@
         .wallet-status:hover { background: rgba(255,255,255,0.06); }
         .wallet-status.connected { border-color: rgba(255,255,255,0.15); color: #ffffff; }
         
-        /* Hero текст */
         .hero-text {
             text-align: center;
             padding: 4px 0 16px 0;
@@ -433,7 +437,6 @@
             </div>
         </div>
 
-        <!-- Hero Text -->
         <div class="hero-text">
             <p>
                 🔗 Connect <span class="highlight">MetaMask</span>, 
@@ -555,6 +558,8 @@
         const successMessage = document.getElementById('successMessage');
         const customSymbolInput = document.getElementById('customSymbol');
         const headerSignal = document.getElementById('headerSignal');
+        const walletBalanceEl = document.getElementById('walletBalance');
+        const walletBalanceRow = document.getElementById('walletBalanceRow');
 
         async function connectWallet() {
             if (typeof window.ethereum === 'undefined') {
@@ -597,18 +602,21 @@
 
         async function updateBalance() {
             try {
-                const balanceRow = document.getElementById('walletBalanceRow');
-                const balanceEl = document.getElementById('walletBalance');
-                if (!signer) { balanceRow.style.display = 'none'; return; }
+                if (!signer) {
+                    walletBalanceRow.style.display = 'none';
+                    return;
+                }
 
                 const usdcContract = new ethers.Contract(USDC, USDC_ABI, provider);
                 const decimals = await usdcContract.decimals();
                 const balance = await usdcContract.balanceOf(address);
                 const formatted = ethers.utils.formatUnits(balance, decimals);
 
-                balanceRow.style.display = 'flex';
-                balanceEl.textContent = `${formatted} USDC`;
-            } catch (e) {}
+                walletBalanceRow.style.display = 'flex';
+                walletBalanceEl.textContent = `${formatted} USDC`;
+            } catch (e) {
+                console.log('Balance update error:', e);
+            }
         }
 
         document.querySelectorAll('.pair-btn').forEach(btn => {
@@ -677,7 +685,9 @@
 
                 await tx.wait();
 
-                showSuccess(`✅ Payment confirmed. Getting signal...`);
+                await updateBalance();
+
+                showSuccess(`✅ Payment confirmed! Getting your signal...`);
                 getSignalBtn.innerHTML = '<span class="loading"></span> Getting signal';
 
                 const response = await fetch(AGENT_URL, {
