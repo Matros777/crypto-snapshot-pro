@@ -50,18 +50,48 @@
             letter-spacing: -0.3px;
             margin: 0;
             line-height: 1.2;
+            white-space: nowrap;
         }
         .logo-text h1 .accent {
             color: #a8a8a8;
             font-weight: 300;
         }
-        .logo-text span {
+        .logo-text .sub {
             font-size: 11px;
             color: #666;
             display: block;
             letter-spacing: 0.5px;
             font-weight: 400;
             margin-top: -1px;
+        }
+        .signal-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 14px;
+            border-radius: 100px;
+            font-size: 13px;
+            font-weight: 600;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.06);
+            color: #888;
+            margin-left: 8px;
+            white-space: nowrap;
+        }
+        .signal-badge.long {
+            background: rgba(0, 200, 150, 0.12);
+            border-color: rgba(0, 200, 150, 0.2);
+            color: #4cd9b0;
+        }
+        .signal-badge.short {
+            background: rgba(255, 70, 70, 0.12);
+            border-color: rgba(255, 70, 70, 0.2);
+            color: #ff6b6b;
+        }
+        .signal-badge.hold {
+            background: rgba(255,255,255,0.04);
+            border-color: rgba(255,255,255,0.06);
+            color: #888;
         }
         .wallet-status {
             background: rgba(255,255,255,0.04);
@@ -164,7 +194,7 @@
         }
         .info-row:last-child { border-bottom: none; }
         .info-label { color: #555; }
-        .info-value { color: #e8e8e8; font-weight: 400; }
+        .info-value { color: #b0b0b0; font-weight: 400; }
         .info-value.usdc { color: #ffffff; }
         .signal-box {
             background: rgba(255,255,255,0.02);
@@ -239,11 +269,11 @@
             font-size: 16px;
             font-weight: 500;
             margin-top: 3px;
-            color: #ffffff;
+            color: #b0b0b0;
         }
         .signal-item .value.green { color: #4cd9b0; }
         .signal-item .value.red { color: #ff6b6b; }
-        .signal-item .value.gold { color: #ffffff; }
+        .signal-item .value.gold { color: #b0b0b0; }
         .signal-full {
             margin-top: 14px;
             padding: 16px 18px;
@@ -252,7 +282,7 @@
             font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
             font-size: 14px;
             white-space: pre-wrap;
-            color: #f0f0f0;
+            color: #c8c8c8;
             max-height: 420px;
             overflow-y: auto;
             line-height: 1.9;
@@ -307,6 +337,7 @@
             .input-group { flex-direction: column; }
             .btn-primary { width: 100%; justify-content: center; }
             .signal-grid { grid-template-columns: 1fr 1fr; }
+            .logo-text h1 { font-size: 17px; white-space: normal; }
         }
     </style>
 </head>
@@ -316,8 +347,8 @@
             <div class="logo">
                 <div class="logo-emoji">📊</div>
                 <div class="logo-text">
-                    <h1>Crypto <span class="accent">Snapshot</span> Pro</h1>
-                    <span>AI Trading Signals · $0.025/request</span>
+                    <h1>Crypto <span class="accent">Snapshot</span> Pro <span class="signal-badge hold" id="headerSignal">● HOLD</span></h1>
+                    <span class="sub">AI Trading Signals · $0.025/request</span>
                 </div>
             </div>
             <div class="wallet-status" id="walletStatus" onclick="connectWallet()">
@@ -435,6 +466,7 @@
         const errorMessage = document.getElementById('errorMessage');
         const successMessage = document.getElementById('successMessage');
         const customSymbolInput = document.getElementById('customSymbol');
+        const headerSignal = document.getElementById('headerSignal');
 
         async function connectWallet() {
             if (typeof window.ethereum === 'undefined') {
@@ -599,7 +631,6 @@
         function displaySignal(data, symbol) {
             let content = data.message?.content || '';
 
-            // Убираем звездочки
             content = content.replace(/\*\*/g, '');
 
             // Добавляем смайлы к подпунктам в AI анализе
@@ -614,52 +645,46 @@
             content = content.replace(/KEY LEVELS TO WATCH:/gi, '\n📌 KEY LEVELS TO WATCH:');
             content = content.replace(/FINAL RECOMMENDATION:/gi, '\n💡 FINAL RECOMMENDATION:');
 
-            // Парсим значения из текста - более гибкие паттерны
+            // Парсим сигнал
             const signalMatch = content.match(/RECOMMENDATION:\s*(LONG|SHORT|HOLD)/i);
             const status = signalMatch ? signalMatch[1] : 'HOLD';
 
-            // Entry - несколько вариантов
+            // Обновляем бейдж в заголовке
+            const badge = headerSignal;
+            badge.textContent = status === 'LONG' ? '🟢 LONG' : status === 'SHORT' ? '🔴 SHORT' : '● HOLD';
+            badge.className = 'signal-badge ' + status.toLowerCase();
+
+            // Entry
             let entryMatch = content.match(/ENTRY ZONE:\s*\$?([\d,\.]+)/i);
             if (!entryMatch) entryMatch = content.match(/Entry:\s*\$?([\d,\.]+)/i);
-            if (!entryMatch) entryMatch = content.match(/entry\s*[:\-]\s*\$?([\d,\.]+)/i);
             const entry = entryMatch ? entryMatch[1] : '—';
 
-            // Target - несколько вариантов
+            // Target
             let targetMatch = content.match(/TARGET\s*1:\s*\$?([\d,\.]+)/i);
             if (!targetMatch) targetMatch = content.match(/Target:\s*\$?([\d,\.]+)/i);
-            if (!targetMatch) targetMatch = content.match(/target\s*1\s*[:\-]\s*\$?([\d,\.]+)/i);
             const target = targetMatch ? targetMatch[1] : '—';
 
-            // Stop - несколько вариантов
+            // Stop
             let stopMatch = content.match(/STOP LOSS:\s*\$?([\d,\.]+)/i);
             if (!stopMatch) stopMatch = content.match(/Stop:\s*\$?([\d,\.]+)/i);
-            if (!stopMatch) stopMatch = content.match(/stop loss\s*[:\-]\s*\$?([\d,\.]+)/i);
             const stop = stopMatch ? stopMatch[1] : '—';
 
             // Risk/Reward
             let rrMatch = content.match(/Risk\/Reward:\s*1:([\d\.]+)/i);
-            if (!rrMatch) rrMatch = content.match(/Risk\/Reward\s*1:([\d\.]+)/i);
             const rr = rrMatch ? rrMatch[1] : '—';
 
-            // Conviction/Confidence - ищем в любом месте
+            // Conviction
             let convictionMatch = content.match(/CONFIDENCE LEVEL:\s*([\d]+)%/i);
             if (!convictionMatch) convictionMatch = content.match(/CONFIDENCE:\s*([\d]+)%/i);
             if (!convictionMatch) convictionMatch = content.match(/Confidence:\s*([\d]+)%/i);
-            if (!convictionMatch) convictionMatch = content.match(/confidence\s*[:\-]\s*([\d]+)%/i);
-            
-            // Если не нашли через паттерны, ищем просто число с % в тексте
             if (!convictionMatch) {
                 const percentMatch = content.match(/(\d+)%/);
-                if (percentMatch) {
-                    convictionMatch = percentMatch;
-                }
+                if (percentMatch) convictionMatch = percentMatch;
             }
-            
             const conviction = convictionMatch ? convictionMatch[1] + '%' : '—';
 
             // 24h Change
             let changeMatch = content.match(/Change:\s*([+\-][\d\.]+)%/i);
-            if (!changeMatch) changeMatch = content.match(/change:\s*([+\-][\d\.]+)%/i);
             const change = changeMatch ? changeMatch[1] + '%' : '—';
 
             // Обновляем DOM
@@ -679,7 +704,6 @@
             changeEl.textContent = change;
             changeEl.className = 'value ' + (change.startsWith('+') ? 'green' : 'red');
 
-            // Яркий текст для модели
             document.getElementById('signalFull').textContent = content;
 
             signalBox.classList.add('show');
