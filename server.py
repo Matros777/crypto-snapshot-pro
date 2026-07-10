@@ -935,6 +935,20 @@ async def health_check():
     return {"status": "ok", "service": "crypto-snapshot-pro", "proxy_enabled": USE_PROXY}
 
 # ============================================================
+# ЯНДЕКС ФАЙЛ ДЛЯ ВЕРИФИКАЦИИ (ДОБАВИТЬ ЭТОТ БЛОК!)
+# ============================================================
+@app.get("/yandex_d100e212bdd18c7b.html")
+async def yandex_verify():
+    return HTMLResponse("""
+    <html>
+        <head>
+            <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+        </head>
+        <body>Verification: d100e212bdd18c7b</body>
+    </html>
+    """)
+
+# ============================================================
 # ГЛАВНАЯ СТРАНИЦА — ДЛЯ ЯНДЕКСА
 # ============================================================
 @app.get("/")
