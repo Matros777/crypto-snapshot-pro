@@ -87,7 +87,7 @@ Short Score: {short_score}
 10. **FINAL RECOMMENDATION**: One clear sentence summarizing action
 
 ### FORMAT EXAMPLE:
-```
+
 📊 MARKET ASSESSMENT:
 [2-3 sentences]
 
@@ -113,7 +113,7 @@ Short Score: {short_score}
 
 💡 FINAL RECOMMENDATION:
 [One clear actionable sentence]
-```
+
 
 ### IMPORTANT RULES:
 - Be CONSERVATIVE - prioritize capital preservation
