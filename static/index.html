@@ -477,7 +477,7 @@
         });
 
         // ============================================================
-        // GET SIGNAL — x402 через MetaMask
+        // GET SIGNAL — x402 через MetaMask (ИСПРАВЛЕННАЯ ВЕРСИЯ)
         // ============================================================
         async function getSignal() {
             if (isProcessing) return;
@@ -491,6 +491,29 @@
 
             if (!signer) {
                 showError('Please connect your wallet first.');
+                return;
+            }
+
+            // Проверяем баланс USDC
+            try {
+                const usdcContract = new ethers.Contract(
+                    USDC,
+                    [
+                        'function balanceOf(address) view returns (uint256)',
+                        'function decimals() view returns (uint8)'
+                    ],
+                    provider
+                );
+                const decimals = await usdcContract.decimals();
+                const balance = await usdcContract.balanceOf(address);
+                const formatted = ethers.utils.formatUnits(balance, decimals);
+
+                if (parseFloat(formatted) < 0.025) {
+                    showError(`Insufficient USDC balance. You have ${formatted} USDC, need 0.025 USDC.`);
+                    return;
+                }
+            } catch (e) {
+                showError('Failed to check USDC balance: ' + e.message);
                 return;
             }
 
@@ -517,30 +540,10 @@
 
                     // Парсим требования
                     const requirements = JSON.parse(atob(paymentHeader));
-
-                    // Проверяем баланс USDC
-                    const usdcContract = new ethers.Contract(
-                        USDC,
-                        [
-                            'function balanceOf(address) view returns (uint256)',
-                            'function decimals() view returns (uint8)'
-                        ],
-                        provider
-                    );
-                    const decimals = await usdcContract.decimals();
-                    const balance = await usdcContract.balanceOf(address);
-                    const formatted = ethers.utils.formatUnits(balance, decimals);
-
-                    if (parseFloat(formatted) < 0.025) {
-                        showError(`Insufficient USDC balance. You have ${formatted} USDC, need 0.025 USDC.`);
-                        isProcessing = false;
-                        getSignalBtn.disabled = false;
-                        getSignalBtn.innerHTML = '🚀 Get Signal';
-                        return;
-                    }
+                    const accept = requirements.accepts[0];
 
                     // Формируем EIP-712 сообщение
-                    const domain = requirements.domain || {
+                    const domain = {
                         name: "USD Coin",
                         version: "2",
                         chainId: 8453,
@@ -559,7 +562,6 @@
                         ]
                     };
 
-                    const accept = requirements.accepts[0];
                     const message = {
                         from: address,
                         to: accept.payTo,
@@ -573,15 +575,15 @@
                     // Подписываем через MetaMask
                     const signature = await signer._signTypedData(domain, types, message);
 
-                    // Формируем payment payload (кодируем в base64 как требует сервер)
+                    // ✅ ПРАВИЛЬНАЯ СТРУКТУРА — как в терминале
                     const paymentPayload = {
-                        ...message,
+                        payload: message,
                         signature: signature
                     };
 
                     const encodedPayload = btoa(JSON.stringify(paymentPayload));
 
-                    // Отправляем с подписью в заголовке
+                    // Отправляем с подписью
                     response = await fetch(AGENT_URL, {
                         method: 'POST',
                         headers: {
@@ -597,13 +599,7 @@
                     const data = await response.json();
                     displaySignal(data, symbol);
                 } else if (response.status === 402) {
-                    // Пробуем прочитать ошибку
-                    try {
-                        const err = await response.text();
-                        showError('Payment required: ' + err);
-                    } catch {
-                        showError('Payment required. Please ensure you have 0.025 USDC.');
-                    }
+                    showError('Payment required. Please ensure you have 0.025 USDC on Base network.');
                 } else {
                     try {
                         const error = await response.json();
