@@ -932,30 +932,16 @@ async def health_check():
     return {"status": "ok", "service": "crypto-snapshot-pro", "proxy_enabled": USE_PROXY}
 
 # ============================================================
-# ГЛАВНАЯ СТРАНИЦА ДЛЯ ЯНДЕКСА И ПЕРЕНАПРАВЛЕНИЯ
+# ГЛАВНАЯ СТРАНИЦА — ДЛЯ ЯНДЕКСА И ПОЛЬЗОВАТЕЛЕЙ
 # ============================================================
 @app.get("/")
-async def root(request: Request):
-    # Проверяем User-Agent для Яндекс бота
-    user_agent = request.headers.get("user-agent", "").lower()
-    
-    # Если это Яндекс бот — отдаем HTML с верификацией
-    if "yandex" in user_agent or "yandexbot" in user_agent:
-        return HTMLResponse("""
-        <html>
-            <head>
-                <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-                <meta name="yandex-verification" content="d100e212bdd18c7b" />
-            </head>
-            <body>Verification: d100e212bdd18c7b</body>
-        </html>
-        """)
-    
-    # Для обычных пользователей — редирект на /app
+async def root():
     return HTMLResponse("""
     <!DOCTYPE html>
     <html>
     <head>
+        <meta name="yandex-verification" content="d100e212bdd18c7b" />
+        <meta name="google-site-verification" content="LNTC7t6OrMfNa9kA3Z781_R7ytdc40_i0cv5n20dOWk" />
         <meta http-equiv="refresh" content="0; url=/app" />
         <title>Crypto Snapshot Pro</title>
     </head>
