@@ -602,6 +602,18 @@
             // Убираем звездочки
             content = content.replace(/\*\*/g, '');
 
+            // Добавляем смайлы к подпунктам в AI анализе
+            content = content.replace(/MARKET ASSESSMENT:/gi, '\n📊 MARKET ASSESSMENT:');
+            content = content.replace(/TRADE RECOMMENDATION:/gi, '\n🎯 TRADE RECOMMENDATION:');
+            content = content.replace(/PRICE PREDICTION 24H:/gi, '\n📈 PRICE PREDICTION 24H:');
+            content = content.replace(/ENTRY ZONE:/gi, '\n📍 ENTRY ZONE:');
+            content = content.replace(/TARGET LEVELS:/gi, '\n🎯 TARGET LEVELS:');
+            content = content.replace(/STOP LOSS:/gi, '\n🛑 STOP LOSS:');
+            content = content.replace(/RISK ASSESSMENT:/gi, '\n⚠️ RISK ASSESSMENT:');
+            content = content.replace(/CONFIDENCE LEVEL:/gi, '\n🎯 CONFIDENCE LEVEL:');
+            content = content.replace(/KEY LEVELS TO WATCH:/gi, '\n📌 KEY LEVELS TO WATCH:');
+            content = content.replace(/FINAL RECOMMENDATION:/gi, '\n💡 FINAL RECOMMENDATION:');
+
             // Парсим значения из текста - более гибкие паттерны
             const signalMatch = content.match(/RECOMMENDATION:\s*(LONG|SHORT|HOLD)/i);
             const status = signalMatch ? signalMatch[1] : 'HOLD';
@@ -609,19 +621,19 @@
             // Entry - несколько вариантов
             let entryMatch = content.match(/ENTRY ZONE:\s*\$?([\d,\.]+)/i);
             if (!entryMatch) entryMatch = content.match(/Entry:\s*\$?([\d,\.]+)/i);
-            if (!entryMatch) entryMatch = content.match(/entry:\s*\$?([\d,\.]+)/i);
+            if (!entryMatch) entryMatch = content.match(/entry\s*[:\-]\s*\$?([\d,\.]+)/i);
             const entry = entryMatch ? entryMatch[1] : '—';
 
             // Target - несколько вариантов
             let targetMatch = content.match(/TARGET\s*1:\s*\$?([\d,\.]+)/i);
             if (!targetMatch) targetMatch = content.match(/Target:\s*\$?([\d,\.]+)/i);
-            if (!targetMatch) targetMatch = content.match(/target\s*1:\s*\$?([\d,\.]+)/i);
+            if (!targetMatch) targetMatch = content.match(/target\s*1\s*[:\-]\s*\$?([\d,\.]+)/i);
             const target = targetMatch ? targetMatch[1] : '—';
 
             // Stop - несколько вариантов
             let stopMatch = content.match(/STOP LOSS:\s*\$?([\d,\.]+)/i);
             if (!stopMatch) stopMatch = content.match(/Stop:\s*\$?([\d,\.]+)/i);
-            if (!stopMatch) stopMatch = content.match(/stop loss:\s*\$?([\d,\.]+)/i);
+            if (!stopMatch) stopMatch = content.match(/stop loss\s*[:\-]\s*\$?([\d,\.]+)/i);
             const stop = stopMatch ? stopMatch[1] : '—';
 
             // Risk/Reward
@@ -629,9 +641,20 @@
             if (!rrMatch) rrMatch = content.match(/Risk\/Reward\s*1:([\d\.]+)/i);
             const rr = rrMatch ? rrMatch[1] : '—';
 
-            // Conviction/Confidence
-            let convictionMatch = content.match(/CONFIDENCE:\s*([\d]+)%/i);
+            // Conviction/Confidence - ищем в любом месте
+            let convictionMatch = content.match(/CONFIDENCE LEVEL:\s*([\d]+)%/i);
+            if (!convictionMatch) convictionMatch = content.match(/CONFIDENCE:\s*([\d]+)%/i);
             if (!convictionMatch) convictionMatch = content.match(/Confidence:\s*([\d]+)%/i);
+            if (!convictionMatch) convictionMatch = content.match(/confidence\s*[:\-]\s*([\d]+)%/i);
+            
+            // Если не нашли через паттерны, ищем просто число с % в тексте
+            if (!convictionMatch) {
+                const percentMatch = content.match(/(\d+)%/);
+                if (percentMatch) {
+                    convictionMatch = percentMatch;
+                }
+            }
+            
             const conviction = convictionMatch ? convictionMatch[1] + '%' : '—';
 
             // 24h Change
@@ -656,7 +679,7 @@
             changeEl.textContent = change;
             changeEl.className = 'value ' + (change.startsWith('+') ? 'green' : 'red');
 
-            // Яркий текст для модели - делаем максимально читаемым
+            // Яркий текст для модели
             document.getElementById('signalFull').textContent = content;
 
             signalBox.classList.add('show');
