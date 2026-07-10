@@ -35,7 +35,7 @@ logger = logging.getLogger("crypto-snapshot")
 app = FastAPI(title="Crypto Snapshot Pro x402 Agent")
 
 # ============================================================
-# RPC ДЛЯ ПРОВЕРКИ ТРАНЗАКЦИЙ
+# RPC ДЛЯ ПРОВЕРКИ ТРАНЗАКЦИЙ (ДЛЯ ВЕБ-ИНТЕРФЕЙСА)
 # ============================================================
 ALCHEMY_URL = os.getenv("ALCHEMY_URL", "https://base-mainnet.g.alchemy.com/v2/U8khpdvO0rAwu9ojyBOpr")
 USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
@@ -78,6 +78,7 @@ async def verify_tx_payment(tx_hash: str) -> bool:
                         to_address = "0x" + topics[2][-40:]
                         if to_address.lower() == PAYTO_ADDRESS.lower():
                             paid_tx_cache[tx_hash] = True
+                            logger.info(f"✅ Payment verified for tx: {tx_hash}")
                             return True
             
             paid_tx_cache[tx_hash] = False
@@ -90,276 +91,7 @@ async def verify_tx_payment(tx_hash: str) -> bool:
 
 
 # ============================================================
-# ASI AI НАСТРОЙКИ
-# ============================================================
-ASI_API_KEY = os.getenv("ASI_API_KEY", "")
-ASI_MODELS = [
-    {"id": "asi1", "name": "ASI1"},
-    {"id": "asi1-mini", "name": "ASI1 Mini"}
-]
-
-# ============================================================
-# ПРОФЕССИОНАЛЬНЫЙ ПРОМПТ ДЛЯ ТРЕЙДЕРА
-# ============================================================
-PROFESSIONAL_PROMPT = """
-You are a professional crypto trader with 20+ years of experience managing institutional portfolios. 
-You provide conservative, data-driven trading advice with clear risk management.
-
-Based on the technical analysis below, provide a professional trading recommendation:
-
-### TECHNICAL DATA:
-Symbol: {symbol}
-Current Price: ${price}
-24h Change: {change}%
-RSI(14): {rsi}
-EMA(20): ${ema20}
-EMA(50): ${ema50}
-Volume Ratio: {volume_ratio}x
-Signal: {signal}
-Conviction: {conviction}
-Entry: ${entry}
-Target: ${target}
-Stop: ${stop}
-Risk/Reward: 1:{risk_reward}
-Support: ${support}
-Resistance: ${resistance}
-24h High: ${high_24h}
-24h Low: ${low_24h}
-Long Score: {long_score}
-Short Score: {short_score}
-
-### YOUR ANALYSIS MUST INCLUDE:
-
-1. **MARKET ASSESSMENT** (2-3 sentences on current market context)
-2. **TRADE RECOMMENDATION**: Clearly state: **LONG** / **SHORT** / **HOLD**
-3. **PRICE PREDICTION 24H**: Where do you see price in 24 hours? (with percentage)
-4. **ENTRY ZONE**: Specific price or range to enter
-5. **TARGET LEVELS**: T1 (conservative), T2 (optimistic)
-6. **STOP LOSS**: Specific price with rationale
-7. **RISK ASSESSMENT**: Low/Medium/High with explanation
-8. **CONFIDENCE LEVEL**: Percentage (0-100%)
-9. **KEY LEVELS TO WATCH**: Critical support/resistance
-10. **FINAL RECOMMENDATION**: One clear sentence summarizing action
-
-### FORMAT EXAMPLE:
-```
-📊 MARKET ASSESSMENT:
-[2-3 sentences]
-
-🎯 RECOMMENDATION: LONG/SHORT/HOLD
-[Clear reason]
-
-📈 24H PRICE PREDICTION:
-[Direction and percentage]
-
-📍 ENTRY ZONE: $X.XX - $X.XX
-🎯 TARGET 1: $X.XX (+X%)
-🎯 TARGET 2: $X.XX (+X%)
-🛑 STOP LOSS: $X.XX (-X%)
-
-⚠️ RISK: Low/Medium/High
-[Explanation]
-
-🎯 CONFIDENCE: X%
-
-📌 KEY LEVELS:
-  Support: $X.XX
-  Resistance: $X.XX
-
-💡 FINAL RECOMMENDATION:
-[One clear actionable sentence]
-```
-
-### IMPORTANT RULES:
-- Be CONSERVATIVE - prioritize capital preservation
-- If indicators are mixed, recommend HOLD
-- Always include specific price levels
-- Be honest about uncertainty
-- Professional tone, no hype
-"""
-
-# ============================================================
-# FALLBACK АНАЛИЗ (профессиональные правила)
-# ============================================================
-def generate_fallback_analysis(signal_data: dict) -> str:
-    """Профессиональный анализ на основе правил (без AI)"""
-    
-    signal = signal_data.get('signal', 'HOLD')
-    rsi = signal_data.get('rsi', 50)
-    price = signal_data.get('price', 0)
-    change = signal_data.get('change', 0)
-    volume_ratio = signal_data.get('volume_ratio', 1.0)
-    conviction = signal_data.get('conviction', 'MEDIUM')
-    entry = signal_data.get('entry', 0)
-    target = signal_data.get('target', 0)
-    stop = signal_data.get('stop', 0)
-    risk_reward = signal_data.get('risk_reward', 0)
-    support = signal_data.get('support', 0)
-    resistance = signal_data.get('resistance', 0)
-    ema20 = signal_data.get('ema20', 0)
-    ema50 = signal_data.get('ema50', 0)
-    
-    lines = []
-    
-    # MARKET ASSESSMENT
-    if signal == "LONG":
-        lines.append("📊 MARKET ASSESSMENT:")
-        lines.append(f"Bullish momentum detected with price above EMA(20) and EMA(50). RSI at {rsi:.1f} suggests {'strong' if rsi < 70 else 'moderate'} buying pressure. Volume {'confirms' if volume_ratio > 1.5 else 'does not fully confirm'} the move.")
-    elif signal == "SHORT":
-        lines.append("📊 MARKET ASSESSMENT:")
-        lines.append(f"Bearish signals present with {'overbought RSI' if rsi > 70 else 'weakening momentum'}. Price showing signs of exhaustion. Volume {'supports' if volume_ratio > 1.5 else 'does not strongly support'} downside.")
-    else:
-        lines.append("📊 MARKET ASSESSMENT:")
-        lines.append(f"Mixed signals with RSI at {rsi:.1f} (neutral). Price trading between support and resistance. Wait for clear breakout or breakdown.")
-    
-    # RECOMMENDATION
-    rec = "LONG" if signal == "LONG" else "SHORT" if signal == "SHORT" else "HOLD"
-    reason = f"Technical indicators {'strongly' if conviction in ['VERY HIGH', 'HIGH'] else 'moderately'} support this position."
-    lines.append(f"\n🎯 RECOMMENDATION: {rec}")
-    lines.append(reason)
-    
-    # PRICE PREDICTION
-    if signal == "LONG":
-        pred = f"+{2 + (rsi / 100) * 3:.1f}%"
-        direction = "UP"
-    elif signal == "SHORT":
-        pred = f"-{2 + ((100 - rsi) / 100) * 3:.1f}%"
-        direction = "DOWN"
-    else:
-        pred = f"±{(rsi / 100) * 2:.1f}%"
-        direction = "SIDEWAYS"
-    lines.append(f"\n📈 24H PRICE PREDICTION:")
-    lines.append(f"Price expected to move {direction} by approximately {pred}")
-    
-    # ENTRY, TARGETS, STOP
-    lines.append(f"\n📍 ENTRY ZONE: ${entry:.2f}")
-    if signal == "LONG":
-        t1 = entry * 1.03
-        t2 = entry * 1.05
-        sl = entry * 0.97
-        lines.append(f"🎯 TARGET 1: ${t1:.2f} (+3%)")
-        lines.append(f"🎯 TARGET 2: ${t2:.2f} (+5%)")
-        lines.append(f"🛑 STOP LOSS: ${sl:.2f} (-3%)")
-    elif signal == "SHORT":
-        t1 = entry * 0.97
-        t2 = entry * 0.95
-        sl = entry * 1.03
-        lines.append(f"🎯 TARGET 1: ${t1:.2f} (-3%)")
-        lines.append(f"🎯 TARGET 2: ${t2:.2f} (-5%)")
-        lines.append(f"🛑 STOP LOSS: ${sl:.2f} (+3%)")
-    else:
-        lines.append(f"🎯 TARGET: ${target:.2f}")
-        lines.append(f"🛑 STOP: ${stop:.2f}")
-    
-    # RISK ASSESSMENT
-    risk = "Low" if conviction in ["VERY HIGH", "HIGH"] else "Medium" if conviction == "MEDIUM" else "High"
-    risk_note = "Strong technical confirmation" if conviction in ["VERY HIGH", "HIGH"] else "Mixed signals present" if conviction == "MEDIUM" else "Weak confirmation"
-    lines.append(f"\n⚠️ RISK: {risk}")
-    lines.append(f"{risk_note} - Position sizing recommended.")
-    
-    # CONFIDENCE
-    conf = 85 if conviction == "VERY HIGH" else 70 if conviction == "HIGH" else 55 if conviction == "MEDIUM" else 40
-    lines.append(f"\n🎯 CONFIDENCE: {conf}%")
-    
-    # KEY LEVELS
-    lines.append(f"\n📌 KEY LEVELS:")
-    lines.append(f"  Support: ${support:.2f}")
-    lines.append(f"  Resistance: ${resistance:.2f}")
-    
-    # FINAL RECOMMENDATION
-    if signal == "LONG":
-        final = f"Consider LONG position with entry at ${entry:.2f}, target ${t1:.2f}, stop ${sl:.2f}. Monitor resistance at ${resistance:.2f} for potential exit."
-    elif signal == "SHORT":
-        final = f"Consider SHORT position with entry at ${entry:.2f}, target ${t1:.2f}, stop ${sl:.2f}. Monitor support at ${support:.2f} for potential exit."
-    else:
-        final = f"Recommend HOLD. Wait for clear breakout above ${resistance:.2f} or breakdown below ${support:.2f} before entering."
-    
-    lines.append(f"\n💡 FINAL RECOMMENDATION:")
-    lines.append(final)
-    
-    return "\n".join(lines)
-
-
-# ============================================================
-# AI АНАЛИЗ ЧЕРЕЗ ASI API
-# ============================================================
-async def generate_ai_analysis(symbol: str, signal_data: dict) -> str:
-    """Генерирует профессиональный AI анализ через ASI API с fallback"""
-    
-    prompt = PROFESSIONAL_PROMPT.format(
-        symbol=symbol.replace('USDT', '/USDT'),
-        price=signal_data.get('price', 0),
-        change=signal_data.get('change', 0),
-        rsi=signal_data.get('rsi', 50),
-        ema20=signal_data.get('ema20', 0),
-        ema50=signal_data.get('ema50', 0),
-        volume_ratio=signal_data.get('volume_ratio', 1.0),
-        signal=signal_data.get('signal', 'HOLD'),
-        conviction=signal_data.get('conviction', 'MEDIUM'),
-        entry=signal_data.get('entry', 0),
-        target=signal_data.get('target', 0),
-        stop=signal_data.get('stop', 0),
-        risk_reward=signal_data.get('risk_reward', 0),
-        support=signal_data.get('support', 0),
-        resistance=signal_data.get('resistance', 0),
-        high_24h=signal_data.get('high_24h', 0),
-        low_24h=signal_data.get('low_24h', 0),
-        long_score=signal_data.get('long_score', 0),
-        short_score=signal_data.get('short_score', 0)
-    )
-    
-    for model in ASI_MODELS:
-        try:
-            if not ASI_API_KEY:
-                logger.warning("⚠️ No ASI API key, using fallback")
-                return generate_fallback_analysis(signal_data)
-            
-            logger.info(f"🤖 Trying ASI model: {model['name']}")
-            
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    "https://api.asi1.ai/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {ASI_API_KEY}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": model["id"],
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": "You are a professional crypto trader with 20+ years of experience. Provide conservative, actionable advice."
-                            },
-                            {
-                                "role": "user",
-                                "content": prompt
-                            }
-                        ],
-                        "temperature": 0.4,
-                        "max_tokens": 800,
-                        "top_p": 0.9
-                    }
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    ai_analysis = data["choices"][0]["message"]["content"]
-                    logger.info(f"✅ AI analysis generated via {model['name']}")
-                    return ai_analysis
-                else:
-                    logger.warning(f"⚠️ ASI {model['name']} error: {response.status_code}")
-                    continue
-                    
-        except Exception as e:
-            logger.error(f"❌ ASI {model.get('name', 'unknown')} error: {e}")
-            continue
-    
-    logger.info("🔄 All ASI models failed, using fallback analysis")
-    return generate_fallback_analysis(signal_data)
-
-
-# ============================================================
-# НАСТРОЙКИ ПРОКСИ
+# НАСТРОЙКИ ПРОКСИ (опционально)
 # ============================================================
 USE_PROXY = os.getenv("PROXY_ENABLED", "false").lower() == "true"
 PROXY_HOST = os.getenv("PROXY_HOST", "152.232.68.111")
@@ -375,19 +107,17 @@ else:
     logger.info("🔗 Proxy disabled")
 
 # ============================================================
-# ИСТОЧНИК ДАННЫХ - Binance
+# ИСТОЧНИК ДАННЫХ - Binance (публичный, БЕЗ КЛЮЧА)
 # ============================================================
 BINANCE_API = "https://api.binance.com/api/v3"
 _cache = {}
 _CACHE_TTL = 60
 
-# ============================================================
-# CONTRACTS
-# ============================================================
-MIN_AMOUNT = 25000
+MIN_AMOUNT = 25000  # 0.025 USDC
 
 class AgentResponse(BaseModel):
     message: dict
+
 
 # ============================================================
 # FACILITATOR VERIFICATION
@@ -455,6 +185,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         logger.error(f"❌ Facilitator error: {e}")
         return False
 
+
 # ============================================================
 # x402 PAYMENT CONFIGURATION
 # ============================================================
@@ -506,6 +237,7 @@ PAYMENT_CONFIG = {
     }
 }
 
+
 def create_402_response():
     """Возвращает 402 Payment Required"""
     envelope = json.dumps(PAYMENT_CONFIG, separators=(',', ':'))
@@ -522,7 +254,7 @@ def create_402_response():
 
 
 # ============================================================
-# Binance API
+# Binance API - С ПОДДЕРЖКОЙ ПРОКСИ
 # ============================================================
 async def fetch_binance(endpoint: str, params: dict = None) -> dict:
     """Запрос к Binance с опциональным прокси"""
@@ -650,7 +382,7 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
 
 
 # ============================================================
-# ТЕХНИЧЕСКИЕ ФУНКЦИИ
+# Технические функции
 # ============================================================
 def calculate_rsi(closes: list[float], period: int = 14) -> float:
     if len(closes) < period + 1:
@@ -804,103 +536,6 @@ def format_price(price: float) -> str:
 
 
 # ============================================================
-# ФУНКЦИЯ ГЕНЕРАЦИИ СИГНАЛА
-# ============================================================
-async def generate_signal_data(symbol: str) -> dict:
-    """Генерирует данные сигнала"""
-    
-    symbol = symbol.upper()
-    if "USDT" not in symbol:
-        symbol = f"{symbol}USDT"
-    
-    ticker = await fetch_ticker(symbol)
-    current_price = float(ticker.get("price", 0))
-    change_24h = float(ticker.get("change", 0))
-    high_24h = float(ticker.get("high", 0))
-    low_24h = float(ticker.get("low", 0))
-
-    if current_price == 0:
-        raise HTTPException(status_code=503, detail="Market data unavailable")
-
-    klines = await fetch_klines(symbol)
-    closes = [k["close"] for k in klines]
-    volumes = [k["volume"] for k in klines]
-
-    rsi = calculate_rsi(closes, 14)
-    ema20 = calculate_ema(closes[-20:], 20) if len(closes) >= 20 else closes[-1]
-    ema50 = calculate_ema(closes[-50:], 50) if len(closes) >= 50 else closes[-1]
-    avg_volume = sum(volumes[-20:]) / 20 if len(volumes) >= 20 else volumes[-1]
-    current_volume = volumes[-1] if volumes else 0
-    volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
-    high_low_range = (high_24h - low_24h) / low_24h if low_24h > 0 else 0
-
-    macd, macd_signal, macd_hist = calculate_macd(closes)
-    bb_upper, bb_middle, bb_lower = calculate_bollinger_bands(closes)
-    rsi_divergence = detect_rsi_divergence(rsi, closes)
-    pivot = calculate_pivot_points(high_24h, low_24h, current_price)
-
-    signal, signal_desc, long_score, short_score = get_signal_from_factors(
-        rsi, ema20, ema50, volume_ratio, high_low_range,
-        macd, macd_signal, macd_hist, bb_upper, bb_middle, bb_lower,
-        rsi_divergence, pivot
-    )
-
-    atr_proxy = high_low_range * current_price
-    support = low_24h
-    resistance = high_24h
-
-    if signal == "LONG":
-        entry = support + (resistance - support) * 0.2
-        target = entry + (entry - support) * 2
-        stop = support - atr_proxy * 0.5
-        risk_reward = (target - entry) / (entry - stop) if entry > stop else 0
-    elif signal == "SHORT":
-        entry = resistance - (resistance - support) * 0.2
-        target = entry - (resistance - entry) * 2
-        stop = resistance + atr_proxy * 0.5
-        risk_reward = (entry - target) / (stop - entry) if stop > entry else 0
-    else:
-        entry = current_price
-        target = current_price * 1.05
-        stop = current_price * 0.95
-        risk_reward = 1.0
-
-    total_score = long_score + short_score
-    conviction = "VERY HIGH" if total_score >= 5 else "HIGH" if total_score >= 4 else "MEDIUM" if total_score >= 3 else "LOW"
-
-    if rsi < 30:
-        rsi_status = "oversold"
-    elif rsi > 70:
-        rsi_status = "overbought"
-    else:
-        rsi_status = "neutral"
-
-    return {
-        'price': current_price,
-        'change': change_24h,
-        'rsi': rsi,
-        'ema20': ema20,
-        'ema50': ema50,
-        'volume_ratio': volume_ratio,
-        'signal': signal,
-        'conviction': conviction,
-        'entry': entry,
-        'target': target,
-        'stop': stop,
-        'risk_reward': risk_reward,
-        'support': support,
-        'resistance': resistance,
-        'high_24h': high_24h,
-        'low_24h': low_24h,
-        'long_score': long_score,
-        'short_score': short_score,
-        'signal_desc': signal_desc,
-        'rsi_status': rsi_status,
-        'symbol': symbol
-    }
-
-
-# ============================================================
 # PAYABLE ENDPOINT
 # ============================================================
 @app.post("/payable")
@@ -989,42 +624,106 @@ async def crypto_snapshot(request: Request):
     # ГЕНЕРАЦИЯ СИГНАЛА
     # ============================================================
     try:
-        signal_data = await generate_signal_data(symbol)
-        ai_analysis = await generate_ai_analysis(symbol, signal_data)
+        symbol = symbol.upper()
+        if "USDT" not in symbol:
+            symbol = f"{symbol}USDT"
+        
+        ticker = await fetch_ticker(symbol)
+        current_price = float(ticker.get("price", 0))
+        change_24h = float(ticker.get("change", 0))
+        high_24h = float(ticker.get("high", 0))
+        low_24h = float(ticker.get("low", 0))
+
+        if current_price == 0:
+            raise HTTPException(status_code=503, detail="Market data unavailable")
+
+        klines = await fetch_klines(symbol)
+        closes = [k["close"] for k in klines]
+        volumes = [k["volume"] for k in klines]
+
+        rsi = calculate_rsi(closes, 14)
+        ema20 = calculate_ema(closes[-20:], 20) if len(closes) >= 20 else closes[-1]
+        ema50 = calculate_ema(closes[-50:], 50) if len(closes) >= 50 else closes[-1]
+        avg_volume = sum(volumes[-20:]) / 20 if len(volumes) >= 20 else volumes[-1]
+        current_volume = volumes[-1] if volumes else 0
+        volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
+        high_low_range = (high_24h - low_24h) / low_24h if low_24h > 0 else 0
+
+        macd, macd_signal, macd_hist = calculate_macd(closes)
+        bb_upper, bb_middle, bb_lower = calculate_bollinger_bands(closes)
+        rsi_divergence = detect_rsi_divergence(rsi, closes)
+        pivot = calculate_pivot_points(high_24h, low_24h, current_price)
+
+        signal, signal_desc, long_score, short_score = get_signal_from_factors(
+            rsi, ema20, ema50, volume_ratio, high_low_range,
+            macd, macd_signal, macd_hist, bb_upper, bb_middle, bb_lower,
+            rsi_divergence, pivot
+        )
+
+        atr_proxy = high_low_range * current_price
+        support = low_24h
+        resistance = high_24h
+
+        if signal == "LONG":
+            entry = support + (resistance - support) * 0.2
+            target = entry + (entry - support) * 2
+            stop = support - atr_proxy * 0.5
+            risk_reward = (target - entry) / (entry - stop) if entry > stop else 0
+        elif signal == "SHORT":
+            entry = resistance - (resistance - support) * 0.2
+            target = entry - (resistance - entry) * 2
+            stop = resistance + atr_proxy * 0.5
+            risk_reward = (entry - target) / (stop - entry) if stop > entry else 0
+        else:
+            entry = current_price
+            target = current_price * 1.05
+            stop = current_price * 0.95
+            risk_reward = 1.0
+
+        total_score = long_score + short_score
+        conviction = "VERY HIGH" if total_score >= 5 else "HIGH" if total_score >= 4 else "MEDIUM" if total_score >= 3 else "LOW"
+
+        if rsi < 30:
+            rsi_status = "oversold"
+        elif rsi > 70:
+            rsi_status = "overbought"
+        else:
+            rsi_status = "neutral"
 
         result = f"""
 ╔══════════════════════════════════════════════════════════════════╗
-║  📊 CRYPTO SNAPSHOT PRO — {signal_data['symbol'].replace('USDT', '/USDT')}          ║
+║  📊 CRYPTO SNAPSHOT PRO — {symbol.replace('USDT', '/USDT')}          ║
 ╚══════════════════════════════════════════════════════════════════╝
 
 ╔══════════════════════════════════════════════════════════════════╗
-║  🎯 TECHNICAL SIGNAL                                           ║
+║  🎯 SIGNAL                                                    ║
 ╠══════════════════════════════════════════════════════════════════╣
-║  {signal_data['signal_desc']} ║
-║  Conviction: {signal_data['conviction']:<10}  |  Score: {signal_data['long_score']:.1f}🟢LONG / {signal_data['short_score']:.1f}🔴SHORT    ║
-║  Reason: {'Bullish factors dominate.' if signal_data['long_score'] > signal_data['short_score'] else 'Bearish factors dominate.' if signal_data['short_score'] > signal_data['long_score'] else 'Mixed signals. Wait for confirmation.'} ║
+║  {signal_desc} ║
+║  Conviction: {conviction:<10}  |  Score: {long_score:.1f}🟢LONG / {short_score:.1f}🔴SHORT    ║
+║  Reason: {'Bullish factors dominate.' if long_score > short_score else 'Bearish factors dominate.' if short_score > long_score else 'Mixed signals. Wait for confirmation.'} ║
 ╚══════════════════════════════════════════════════════════════════╝
 
 ╔══════════════════════════════════════════════════════════════════╗
-║  📈 TECHNICAL INDICATORS                                       ║
+║  📈 TECHNICALS                                                ║
 ╠══════════════════════════════════════════════════════════════════╣
-║  Price:  {format_price(signal_data['price']):<20}  24h Change: {signal_data['change']:+.2f}% ║
-║  RSI(14): {signal_data['rsi']:.1f} ({signal_data['rsi_status']}){' ' * (40 - len(f'{signal_data['rsi']:.1f} ({signal_data['rsi_status']})'))}║
-║  EMA(20): {format_price(signal_data['ema20']):<20}  EMA(50): {format_price(signal_data['ema50'])} ║
-║  Volume Ratio: {signal_data['volume_ratio']:.2f}x{' ' * (30 - len(f'{signal_data['volume_ratio']:.2f}x'))}║
+║  Price:  {format_price(current_price):<20}  24h Change: {change_24h:+.2f}% ║
+║  RSI(14): {rsi:.1f} ({rsi_status}){' ' * (40 - len(f'{rsi:.1f} ({rsi_status})'))}║
+║  EMA(20): {format_price(ema20):<20}  EMA(50): {format_price(ema50)} ║
+║  Volume Ratio: {volume_ratio:.2f}x{' ' * (30 - len(f'{volume_ratio:.2f}x'))}║
 ╚══════════════════════════════════════════════════════════════════╝
 
 ╔══════════════════════════════════════════════════════════════════╗
-║  🎯 STRATEGY LEVELS                                            ║
+║  🎯 STRATEGY                                                 ║
 ╠══════════════════════════════════════════════════════════════════╣
-║  Entry:  {format_price(signal_data['entry']):<20}  Target: {format_price(signal_data['target'])} ║
-║  Stop:   {format_price(signal_data['stop']):<20}  Risk/Reward: 1:{signal_data['risk_reward']:.2f} ║
+║  Entry:  {format_price(entry):<20}  Target: {format_price(target)} ║
+║  Stop:   {format_price(stop):<20}  Risk/Reward: 1:{risk_reward:.2f} ║
 ╚══════════════════════════════════════════════════════════════════╝
 
 ╔══════════════════════════════════════════════════════════════════╗
-║  🤖 PROFESSIONAL AI ANALYSIS                                   ║
+║  📌 KEY LEVELS                                                ║
 ╠══════════════════════════════════════════════════════════════════╣
-{ai_analysis}
+║  Support:  {format_price(support):<20}  Resistance: {format_price(resistance)} ║
+║  24h High: {format_price(high_24h):<20}  24h Low:  {format_price(low_24h)} ║
 ╚══════════════════════════════════════════════════════════════════╝
 
 📚 Resources:
@@ -1051,7 +750,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/app")
 async def web_app():
-    """Веб-интерфейс"""
     try:
         with open("static/index.html", "r", encoding="utf-8") as f:
             return HTMLResponse(f.read())
@@ -1069,22 +767,17 @@ async def root():
     return {
         "service": "Crypto Snapshot Pro x402 Agent",
         "agentId": "3613",
-        "version": "4.1.0",
+        "version": "4.0.0",
         "data_source": "Binance Public API",
         "proxy_enabled": USE_PROXY,
-        "ai_analysis": "ASI1 Professional Trading Analysis",
-        "features": ["RSI", "EMA", "Volume", "Bollinger Bands", "MACD", "8-Factor Scoring", "AI Analysis"],
+        "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "8-Factor Scoring"],
         "x402": True,
         "settle": "OpenFacilitator",
         "web_interface": "/app",
         "endpoints": {
-            "/": "Main API (POST/GET)",
-            "/app": "Web interface",
-            "/payable": "x402 verification",
-            "/health": "Health check",
-            "/signal": "Signal page"
+            "/": "Main endpoint (POST/GET)",
+            "/app": "Web interface (GET)",
+            "/payable": "x402 verification endpoint (POST)",
+            "/health": "Health check (GET)",
         }
     }
----
-
-**Босс, вот ПОЛНЫЙ код!** Скопируйте целиком в `server.py` и залейте на Render. 🫡
