@@ -3,7 +3,66 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Crypto Snapshot Pro — AI Trading Signals</title>
+    
+    <!-- ============================================================ -->
+    <!-- SEO & ИНДЕКСАЦИЯ                                             -->
+    <!-- ============================================================ -->
+    <title>Crypto Snapshot Pro — AI Trading Signals with x402 Payments</title>
+    
+    <!-- Описание для Google -->
+    <meta name="description" content="Crypto Snapshot Pro — AI-powered trading signals for 500+ crypto pairs. Pay 0.025 USDC via x402 protocol, get LONG/SHORT/HOLD signals with entry, target, stop levels.">
+    <meta name="keywords" content="crypto signals, AI trading, Bitcoin, Ethereum, Solana, technical analysis, x402, USDC, Base network">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://crypto-snapshot-pro.onrender.com/app">
+    
+    <!-- Google Search Console -->
+    <meta name="google-site-verification" content="your-verification-code">
+    
+    <!-- Open Graph (для соцсетей и превью) -->
+    <meta property="og:title" content="Crypto Snapshot Pro — AI Trading Signals">
+    <meta property="og:description" content="AI-powered crypto signals with x402 payments. 0.025 USDC per request. LONG/SHORT/HOLD with entry, target, stop levels.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://crypto-snapshot-pro.onrender.com/app">
+    <meta property="og:image" content="https://i.postimg.cc/8cFw5pt9/android-icon-512x512.png">
+    <meta property="og:image:width" content="512">
+    <meta property="og:image:height" content="512">
+    <meta property="og:site_name" content="Crypto Snapshot Pro">
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Crypto Snapshot Pro — AI Trading Signals">
+    <meta name="twitter:description" content="AI-powered crypto signals. 0.025 USDC. LONG/SHORT/HOLD with professional analysis.">
+    <meta name="twitter:image" content="https://i.postimg.cc/8cFw5pt9/android-icon-512x512.png">
+    <meta name="twitter:site" content="@VitalijMatros">
+    
+    <!-- ============================================================ -->
+    <!-- FAVICON (512x512)                                           -->
+    <!-- ============================================================ -->
+    <link rel="icon" type="image/png" sizes="512x512" href="https://i.postimg.cc/8cFw5pt9/android-icon-512x512.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="https://i.postimg.cc/8cFw5pt9/android-icon-512x512.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="https://i.postimg.cc/8cFw5pt9/android-icon-512x512.png">
+    <link rel="apple-touch-icon" href="https://i.postimg.cc/8cFw5pt9/android-icon-512x512.png">
+    
+    <!-- ============================================================ -->
+    <!-- SCHEMA MARKUP (для Google)                                  -->
+    <!-- ============================================================ -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Crypto Snapshot Pro",
+      "description": "AI-powered crypto trading signals with x402 payments. Get LONG/SHORT/HOLD signals with entry, target, stop levels.",
+      "url": "https://crypto-snapshot-pro.onrender.com/app",
+      "applicationCategory": "FinanceApplication",
+      "operatingSystem": "All",
+      "offers": {
+        "@type": "Offer",
+        "price": "0.025",
+        "priceCurrency": "USD"
+      }
+    }
+    </script>
+
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -633,7 +692,6 @@
 
             content = content.replace(/\*\*/g, '');
 
-            // Добавляем смайлы к подпунктам в AI анализе
             content = content.replace(/MARKET ASSESSMENT:/gi, '\n📊 MARKET ASSESSMENT:');
             content = content.replace(/TRADE RECOMMENDATION:/gi, '\n🎯 TRADE RECOMMENDATION:');
             content = content.replace(/PRICE PREDICTION 24H:/gi, '\n📈 PRICE PREDICTION 24H:');
@@ -645,35 +703,28 @@
             content = content.replace(/KEY LEVELS TO WATCH:/gi, '\n📌 KEY LEVELS TO WATCH:');
             content = content.replace(/FINAL RECOMMENDATION:/gi, '\n💡 FINAL RECOMMENDATION:');
 
-            // Парсим сигнал
             const signalMatch = content.match(/RECOMMENDATION:\s*(LONG|SHORT|HOLD)/i);
             const status = signalMatch ? signalMatch[1] : 'HOLD';
 
-            // Обновляем бейдж в заголовке
             const badge = headerSignal;
             badge.textContent = status === 'LONG' ? '🟢 LONG' : status === 'SHORT' ? '🔴 SHORT' : '● HOLD';
             badge.className = 'signal-badge ' + status.toLowerCase();
 
-            // Entry
             let entryMatch = content.match(/ENTRY ZONE:\s*\$?([\d,\.]+)/i);
             if (!entryMatch) entryMatch = content.match(/Entry:\s*\$?([\d,\.]+)/i);
             const entry = entryMatch ? entryMatch[1] : '—';
 
-            // Target
             let targetMatch = content.match(/TARGET\s*1:\s*\$?([\d,\.]+)/i);
             if (!targetMatch) targetMatch = content.match(/Target:\s*\$?([\d,\.]+)/i);
             const target = targetMatch ? targetMatch[1] : '—';
 
-            // Stop
             let stopMatch = content.match(/STOP LOSS:\s*\$?([\d,\.]+)/i);
             if (!stopMatch) stopMatch = content.match(/Stop:\s*\$?([\d,\.]+)/i);
             const stop = stopMatch ? stopMatch[1] : '—';
 
-            // Risk/Reward
             let rrMatch = content.match(/Risk\/Reward:\s*1:([\d\.]+)/i);
             const rr = rrMatch ? rrMatch[1] : '—';
 
-            // Conviction
             let convictionMatch = content.match(/CONFIDENCE LEVEL:\s*([\d]+)%/i);
             if (!convictionMatch) convictionMatch = content.match(/CONFIDENCE:\s*([\d]+)%/i);
             if (!convictionMatch) convictionMatch = content.match(/Confidence:\s*([\d]+)%/i);
@@ -683,11 +734,9 @@
             }
             const conviction = convictionMatch ? convictionMatch[1] + '%' : '—';
 
-            // 24h Change
             let changeMatch = content.match(/Change:\s*([+\-][\d\.]+)%/i);
             const change = changeMatch ? changeMatch[1] + '%' : '—';
 
-            // Обновляем DOM
             document.getElementById('signalSymbol').textContent = `${symbol}/USDT`;
 
             const statusEl = document.getElementById('signalStatus');
