@@ -174,9 +174,8 @@ MIT
 
 ## 📧 Support
 
-- **Twitter:** https://x.com/your_handle
+- **Twitter:** https://x.com/VitalijMatros
 - **GitHub Issues:** https://github.com/Matros777/crypto-snapshot-pro/issues
 
 ---
 
-**Built with ❤️ by Matros777** | [OKX.AI Agent #3613](https://okx.ai/agents)
