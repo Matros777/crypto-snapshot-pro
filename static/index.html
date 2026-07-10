@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Snapshot Pro — AI Trading Signals</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #0d1130 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            width: 100%;
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .logo h1 {
+            font-size: 24px;
+            font-weight: 700;
+            background: linear-gradient(90deg, #00d4ff, #7b2ffc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .logo span {
+            font-size: 12px;
+            color: #888;
+            -webkit-text-fill-color: #888;
+        }
+        .wallet-status {
+            background: rgba(255,255,255,0.08);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .wallet-status:hover {
+            background: rgba(255,255,255,0.15);
+        }
+        .wallet-status.connected {
+            border-color: #00d4ff;
+            color: #00d4ff;
+        }
+        .card {
+            background: rgba(255,255,255,0.03);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        .card-title {
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .pair-selector {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .pair-btn {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #aaa;
+            padding: 8px 20px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        .pair-btn:hover {
+            background: rgba(255,255,255,0.12);
+            color: #fff;
+        }
+        .pair-btn.active {
+            background: rgba(0,212,255,0.2);
+            border-color: #00d4ff;
+            color: #00d4ff;
+        }
+        .input-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .input-group input {
+            flex: 1;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 12px 16px;
+            color: #fff;
+            font-size: 16px;
+            outline: none;
+            transition: all 0.3s;
+        }
+        .input-group input:focus {
+            border-color: #00d4ff;
+            box-shadow: 0 0 20px rgba(0,212,255,0.1);
+        }
+        .input-group input::placeholder {
+            color: #555;
+        }
+        .btn-primary {
+            background: linear-gradient(90deg, #00d4ff, #7b2ffc);
+            border: none;
+            padding: 12px 32px;
+            border-radius: 12px;
+            color: #fff;
+            font-weight: 600;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0,212,255,0.3);
+        }
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            font-size: 14px;
+        }
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        .info-label {
+            color: #888;
+        }
+        .info-value {
+            color: #fff;
+            font-weight: 500;
+        }
+        .info-value.usdc {
+            color: #00d4ff;
+        }
+        .signal-box {
+            background: rgba(255,255,255,0.03);
+            border-radius: 16px;
+            padding: 24px;
+            margin-top: 20px;
+            border: 1px solid rgba(255,255,255,0.06);
+            display: none;
+        }
+        .signal-box.show {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .signal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .signal-symbol {
+            font-size: 20px;
+            font-weight: 700;
+        }
+        .signal-status {
+            padding: 4px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .signal-status.long {
+            background: rgba(0,212,255,0.2);
+            color: #00d4ff;
+        }
+        .signal-status.short {
+            background: rgba(255,68,68,0.2);
+            color: #ff4444;
+        }
+        .signal-status.hold {
+            background: rgba(255,255,255,0.1);
+            color: #ffaa00;
+        }
+        .signal-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 16px;
+        }
+        .signal-item {
+            background: rgba(255,255,255,0.04);
+            padding: 12px;
+            border-radius: 10px;
+        }
+        .signal-item .label {
+            font-size: 11px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .signal-item .value {
+            font-size: 18px;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+        .signal-item .value.green { color: #00d4ff; }
+        .signal-item .value.red { color: #ff4444; }
+        .signal-item .value.gold { color: #ffaa00; }
+        .signal-full {
+            margin-top: 16px;
+            padding: 16px;
+            background: rgba(255,255,255,0.02);
+            border-radius: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            color: #aaa;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .signal-full::-webkit-scrollbar {
+            width: 4px;
+        }
+        .signal-full::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.02);
+        }
+        .signal-full::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+        }
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.1);
+            border-top-color: #00d4ff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            font-size: 12px;
+            color: #555;
+        }
+        .footer a {
+            color: #00d4ff;
+            text-decoration: none;
+        }
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        .error {
+            color: #ff4444;
+            background: rgba(255,68,68,0.1);
+            padding: 12px;
+            border-radius: 10px;
+            margin-top: 12px;
+            display: none;
+        }
+        .error.show {
+            display: block;
+        }
+        @media (max-width: 600px) {
+            .container { padding: 20px; }
+            .header { flex-direction: column; align-items: stretch; }
+            .input-group { flex-direction: column; }
+            .btn-primary { width: 100%; }
+            .signal-grid { grid-template-columns: 1fr; }
+            .pair-selector { justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">
+                <h1>📊 Crypto Snapshot Pro</h1>
+                <span>AI Trading Signals · $0.025/request</span>
+            </div>
+            <div class="wallet-status" id="walletStatus" onclick="connectWallet()">
+                🔌 Connect Wallet
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">🎯 Select Pair</div>
+            <div class="pair-selector" id="pairSelector">
+                <button class="pair-btn active" data-symbol="BTC">BTC</button>
+                <button class="pair-btn" data-symbol="ETH">ETH</button>
+                <button class="pair-btn" data-symbol="SOL">SOL</button>
+                <button class="pair-btn" data-symbol="DOGE">DOGE</button>
+                <button class="pair-btn" data-symbol="XRP">XRP</button>
+                <button class="pair-btn" data-symbol="LTC">LTC</button>
+            </div>
+            <div class="input-group">
+                <input type="text" id="customSymbol" placeholder="Enter symbol (e.g., ADA, MATIC, SHIB...)" />
+                <button class="btn-primary" id="getSignalBtn" onclick="getSignal()">🚀 Get Signal</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">💰 Payment Info</div>
+            <div class="info-row">
+                <span class="info-label">Price per signal</span>
+                <span class="info-value usdc">0.025 USDC</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Network</span>
+                <span class="info-value">Base</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Pay to</span>
+                <span class="info-value" style="font-size:12px;font-family:monospace;">0x5b7e...C97B3</span>
+            </div>
+            <div class="info-row" id="walletBalanceRow" style="display:none;">
+                <span class="info-label">Wallet Balance</span>
+                <span class="info-value" id="walletBalance">—</span>
+            </div>
+        </div>
+
+        <div id="errorMessage" class="error"></div>
+
+        <div class="signal-box" id="signalBox">
+            <div class="signal-header">
+                <span class="signal-symbol" id="signalSymbol">BTC/USDT</span>
+                <span class="signal-status" id="signalStatus">—</span>
+            </div>
+            <div class="signal-grid">
+                <div class="signal-item">
+                    <div class="label">Entry</div>
+                    <div class="value" id="signalEntry">—</div>
+                </div>
+                <div class="signal-item">
+                    <div class="label">Target</div>
+                    <div class="value green" id="signalTarget">—</div>
+                </div>
+                <div class="signal-item">
+                    <div class="label">Stop</div>
+                    <div class="value red" id="signalStop">—</div>
+                </div>
+                <div class="signal-item">
+                    <div class="label">Risk/Reward</div>
+                    <div class="value gold" id="signalRR">—</div>
+                </div>
+                <div class="signal-item">
+                    <div class="label">Conviction</div>
+                    <div class="value" id="signalConviction">—</div>
+                </div>
+                <div class="signal-item">
+                    <div class="label">24h Change</div>
+                    <div class="value" id="signalChange">—</div>
+                </div>
+            </div>
+            <div class="signal-full" id="signalFull"></div>
+            <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06);font-size:12px;color:#555;">
+                <div>📖 <a href="https://gist.github.com/Matros777/c5d95532248eaaf2b86fd04f8a2753b7" target="_blank">Full Guide</a> · 🐦 <a href="https://x.com/your_handle" target="_blank">Twitter</a> · 🌐 <a href="https://openx402.ai/projects/0x5b7efd37546d6bb02463339ceaddd80997ac97b3" target="_blank">OpenX402</a></div>
+            </div>
+        </div>
+
+        <div class="footer">
+            ⚠️ Not financial advice · Always DYOR · Powered by x402 &amp; AI
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js">
+    </script>
+    <script>
+        // ============================================================
+        // CONFIG
+        // ============================================================
+        const AGENT_URL = "https://crypto-snapshot-pro.onrender.com/";
+        const PAYTO = "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3";
+        const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+        const PRICE = "0.025";
+        const CHAIN_ID = 8453; // Base
+
+        // ============================================================
+        // STATE
+        // ============================================================
+        let signer = null;
+        let address = null;
+        let provider = null;
+        let selectedSymbol = "BTC";
+        let isProcessing = false;
+
+        // ============================================================
+        // DOM REFS
+        // ============================================================
+        const walletStatusEl = document.getElementById('walletStatus');
+        const getSignalBtn = document.getElementById('getSignalBtn');
+        const signalBox = document.getElementById('signalBox');
+        const errorMessage = document.getElementById('errorMessage');
+        const customSymbolInput = document.getElementById('customSymbol');
+
+        // ============================================================
+        // WALLET CONNECTION
+        // ============================================================
+        async function connectWallet() {
+            if (typeof window.ethereum === 'undefined') {
+                showError('Please install MetaMask or another Web3 wallet.');
+                return;
+            }
+
+            try {
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                await provider.send("eth_requestAccounts", []);
+                signer = provider.getSigner();
+                address = await signer.getAddress();
+
+                // Check network
+                const network = await provider.getNetwork();
+                if (network.chainId !== CHAIN_ID) {
+                    try {
+                        await window.ethereum.request({
+                            method: 'wallet_switchEthereumChain',
+                            params: [{ chainId: '0x2105' }] // 8453 in hex
+                        });
+                        // Wait for switch
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        await connectWallet();
+                        return;
+                    } catch (e) {
+                        showError('Please switch to Base network manually.');
+                        return;
+                    }
+                }
+
+                walletStatusEl.textContent = `🟢 ${address.slice(0,6)}...${address.slice(-4)}`;
+                walletStatusEl.classList.add('connected');
+
+                // Check balance
+                await updateBalance();
+
+                hideError();
+                getSignalBtn.disabled = false;
+
+            } catch (error) {
+                showError('Failed to connect wallet: ' + error.message);
+            }
+        }
+
+        async function updateBalance() {
+            try {
+                const balanceRow = document.getElementById('walletBalanceRow');
+                const balanceEl = document.getElementById('walletBalance');
+
+                if (!signer) {
+                    balanceRow.style.display = 'none';
+                    return;
+                }
+
+                // Get USDC balance
+                const usdcContract = new ethers.Contract(
+                    USDC,
+                    [
+                        'function balanceOf(address) view returns (uint256)',
+                        'function decimals() view returns (uint8)'
+                    ],
+                    provider
+                );
+
+                const decimals = await usdcContract.decimals();
+                const balance = await usdcContract.balanceOf(address);
+                const formatted = ethers.utils.formatUnits(balance, decimals);
+
+                balanceRow.style.display = 'flex';
+                balanceEl.textContent = `${formatted} USDC`;
+            } catch (e) {
+                // Silent fail
+            }
+        }
+
+        // ============================================================
+        // PAIR SELECTION
+        // ============================================================
+        document.querySelectorAll('.pair-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.pair-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                selectedSymbol = this.dataset.symbol;
+                customSymbolInput.value = '';
+            });
+        });
+
+        customSymbolInput.addEventListener('keyup', function(e) {
+            if (e.key === 'Enter') getSignal();
+            const val = this.value.trim().toUpperCase();
+            if (val) {
+                document.querySelectorAll('.pair-btn').forEach(b => b.classList.remove('active'));
+                selectedSymbol = val;
+            }
+        });
+
+        // ============================================================
+        // MAIN: GET SIGNAL
+        // ============================================================
+        async function getSignal() {
+            if (isProcessing) return;
+
+            const symbol = customSymbolInput.value.trim().toUpperCase() || selectedSymbol;
+
+            if (!symbol) {
+                showError('Please select or enter a symbol.');
+                return;
+            }
+
+            if (!signer) {
+                showError('Please connect your wallet first.');
+                return;
+            }
+
+            hideError();
+            isProcessing = true;
+            getSignalBtn.disabled = true;
+            getSignalBtn.innerHTML = '<span class="loading"></span> Processing...';
+            signalBox.classList.remove('show');
+
+            try {
+                // 1. Try to get signal (may return 402)
+                let response = await fetch(AGENT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol: symbol })
+                });
+
+                // 2. If 402 - handle payment
+                if (response.status === 402) {
+                    // Check if user has enough USDC
+                    const usdcContract = new ethers.Contract(
+                        USDC,
+                        [
+                            'function balanceOf(address) view returns (uint256)',
+                            'function decimals() view returns (uint8)'
+                        ],
+                        provider
+                    );
+                    const decimals = await usdcContract.decimals();
+                    const balance = await usdcContract.balanceOf(address);
+                    const formatted = ethers.utils.formatUnits(balance, decimals);
+
+                    if (parseFloat(formatted) < 0.025) {
+                        showError(`Insufficient USDC balance. You have ${formatted} USDC, need 0.025 USDC.`);
+                        isProcessing = false;
+                        getSignalBtn.disabled = false;
+                        getSignalBtn.innerHTML = '🚀 Get Signal';
+                        return;
+                    }
+
+                    // Send USDC payment
+                    const txHash = await sendUSDC();
+
+                    // Retry with tx_hash
+                    response = await fetch(AGENT_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            symbol: symbol,
+                            tx_hash: txHash
+                        })
+                    });
+                }
+
+                // 4. Process response
+                if (response.status === 200) {
+                    const data = await response.json();
+                    displaySignal(data, symbol);
+                } else if (response.status === 402) {
+                    showError('Payment required. Please ensure you have 0.025 USDC.');
+                } else {
+                    const error = await response.json();
+                    showError(error.detail || 'Failed to get signal.');
+                }
+
+            } catch (error) {
+                showError('Error: ' + error.message);
+            } finally {
+                isProcessing = false;
+                getSignalBtn.disabled = false;
+                getSignalBtn.innerHTML = '🚀 Get Signal';
+            }
+        }
+
+        // ============================================================
+        // PAYMENT: Send USDC
+        // ============================================================
+        async function sendUSDC() {
+            const usdcContract = new ethers.Contract(
+                USDC,
+                [
+                    'function transfer(address to, uint256 amount) returns (bool)',
+                    'function decimals() view returns (uint8)'
+                ],
+                signer
+            );
+
+            const decimals = await usdcContract.decimals();
+            const amount = ethers.utils.parseUnits(PRICE, decimals);
+
+            const tx = await usdcContract.transfer(PAYTO, amount);
+            await tx.wait();
+
+            return tx.hash;
+        }
+
+        // ============================================================
+        // DISPLAY SIGNAL
+        // ============================================================
+        function displaySignal(data, symbol) {
+            const content = data.message?.content || '';
+
+            // Extract values with regex
+            const signalMatch = content.match(/RECOMMENDATION:\s*(LONG|SHORT|HOLD)/i);
+            const status = signalMatch ? signalMatch[1] : 'HOLD';
+
+            const priceMatch = content.match(/Price:\s*\$?([\d,\.]+)/i);
+            const price = priceMatch ? priceMatch[1] : '—';
+
+            const entryMatch = content.match(/ENTRY ZONE:\s*\$?([\d,\.]+)/i);
+            const entry = entryMatch ? entryMatch[1] : '—';
+
+            const targetMatch = content.match(/TARGET 1:\s*\$?([\d,\.]+)/i);
+            const target = targetMatch ? targetMatch[1] : '—';
+
+            const stopMatch = content.match(/STOP LOSS:\s*\$?([\d,\.]+)/i);
+            const stop = stopMatch ? stopMatch[1] : '—';
+
+            const rrMatch = content.match(/Risk\/Reward:\s*1:([\d\.]+)/i);
+            const rr = rrMatch ? rrMatch[1] : '—';
+
+            const convictionMatch = content.match(/CONFIDENCE:\s*([\d]+)%/i);
+            const conviction = convictionMatch ? convictionMatch[1] + '%' : '—';
+
+            const changeMatch = content.match(/Change:\s*([+\-][\d\.]+)%/i);
+            const change = changeMatch ? changeMatch[1] + '%' : '—';
+
+            // Update UI
+            document.getElementById('signalSymbol').textContent = `${symbol}/USDT`;
+
+            const statusEl = document.getElementById('signalStatus');
+            statusEl.textContent = status;
+            statusEl.className = 'signal-status ' + (status === 'LONG' ? 'long' : status === 'SHORT' ? 'short' : 'hold');
+
+            document.getElementById('signalEntry').textContent = entry !== '—' ? `$${entry}` : '—';
+            document.getElementById('signalTarget').textContent = target !== '—' ? `$${target}` : '—';
+            document.getElementById('signalStop').textContent = stop !== '—' ? `$${stop}` : '—';
+            document.getElementById('signalRR').textContent = rr !== '—' ? `1:${rr}` : '—';
+            document.getElementById('signalConviction').textContent = conviction;
+
+            const changeEl = document.getElementById('signalChange');
+            changeEl.textContent = change;
+            changeEl.className = 'value ' + (change.startsWith('+') ? 'green' : 'red');
+
+            document.getElementById('signalFull').textContent = content;
+
+            signalBox.classList.add('show');
+            signalBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // ============================================================
+        // HELPERS
+        // ============================================================
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorMessage.classList.add('show');
+        }
+
+        function hideError() {
+            errorMessage.classList.remove('show');
+        }
+
+        // ============================================================
+        // AUTO CONNECT ON LOAD
+        // ============================================================
+        window.addEventListener('load', () => {
+            if (window.ethereum) {
+                // Check if already connected
+                window.ethereum.request({ method: 'eth_accounts' }).then(accounts => {
+                    if (accounts.length > 0) connectWallet();
+                }).catch(() => {});
+            }
+        });
+
+        // Listen for account changes
+        if (window.ethereum) {
+            window.ethereum.on('accountsChanged', function(accounts) {
+                if (accounts.length === 0) {
+                    // Disconnected
+                    walletStatusEl.textContent = '🔌 Connect Wallet';
+                    walletStatusEl.classList.remove('connected');
+                    signer = null;
+                    address = null;
+                    getSignalBtn.disabled = true;
+                } else {
+                    connectWallet();
+                }
+            });
+
+            window.ethereum.on('chainChanged', function() {
+                window.location.reload();
+            });
+        }
+    </script>
+</body>
+</html>
