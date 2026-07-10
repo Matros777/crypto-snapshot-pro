@@ -52,10 +52,8 @@ _cache = {}
 _CACHE_TTL = 60
 
 # ============================================================
-# ALCHEMY RPC & CONTRACTS
+# CONTRACTS
 # ============================================================
-ALCHEMY_URL = "https://base-mainnet.g.alchemy.com/v2/U8khpdvO0rAwu9ojyBOpr"
-
 USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 PAYTO_ADDRESS = "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3"
 MIN_AMOUNT = 25000  # 0.025 USDC
@@ -217,7 +215,7 @@ async def fetch_binance(endpoint: str, params: dict = None) -> dict:
             logger.info(f"🔄 Using proxy: {PROXY_HOST}:{PROXY_PORT}")
             async with httpx.AsyncClient(
                 timeout=15.0,
-                proxies=PROXY_URL
+                proxy=PROXY_URL  # ← ИСПРАВЛЕНО: proxy (единственное число)
             ) as client:
                 response = await client.get(
                     f"{BINANCE_API}/{endpoint}",
