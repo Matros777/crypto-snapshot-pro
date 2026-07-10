@@ -42,7 +42,6 @@
         .logo-emoji {
             font-size: 28px;
             line-height: 1;
-            filter: grayscale(0.2);
         }
         .logo-text h1 {
             font-size: 20px;
@@ -206,11 +205,11 @@
             letter-spacing: 0.5px;
         }
         .signal-status.long {
-            background: rgba(0, 200, 150, 0.12);
+            background: rgba(0, 200, 150, 0.15);
             color: #4cd9b0;
         }
         .signal-status.short {
-            background: rgba(255, 70, 70, 0.12);
+            background: rgba(255, 70, 70, 0.15);
             color: #ff6b6b;
         }
         .signal-status.hold {
@@ -240,28 +239,28 @@
             font-size: 16px;
             font-weight: 500;
             margin-top: 3px;
-            color: #e8e8e8;
+            color: #ffffff;
         }
         .signal-item .value.green { color: #4cd9b0; }
         .signal-item .value.red { color: #ff6b6b; }
-        .signal-item .value.gold { color: #e8e8e8; }
+        .signal-item .value.gold { color: #ffffff; }
         .signal-full {
             margin-top: 14px;
-            padding: 14px 16px;
+            padding: 16px 18px;
             background: rgba(0,0,0,0.3);
             border-radius: 12px;
             font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
-            font-size: 12px;
+            font-size: 14px;
             white-space: pre-wrap;
-            color: #888;
-            max-height: 350px;
+            color: #f0f0f0;
+            max-height: 420px;
             overflow-y: auto;
-            line-height: 1.7;
-            border: 1px solid rgba(255,255,255,0.03);
+            line-height: 1.9;
+            border: 1px solid rgba(255,255,255,0.05);
         }
-        .signal-full::-webkit-scrollbar { width: 3px; }
+        .signal-full::-webkit-scrollbar { width: 4px; }
         .signal-full::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
-        .signal-full::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 2px; }
+        .signal-full::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
         .loading {
             display: inline-block;
             width: 14px;
@@ -600,29 +599,47 @@
         function displaySignal(data, symbol) {
             let content = data.message?.content || '';
 
+            // Убираем звездочки
             content = content.replace(/\*\*/g, '');
 
+            // Парсим значения из текста - более гибкие паттерны
             const signalMatch = content.match(/RECOMMENDATION:\s*(LONG|SHORT|HOLD)/i);
             const status = signalMatch ? signalMatch[1] : 'HOLD';
 
-            const entryMatch = content.match(/ENTRY ZONE:\s*\$?([\d,\.]+)/i);
+            // Entry - несколько вариантов
+            let entryMatch = content.match(/ENTRY ZONE:\s*\$?([\d,\.]+)/i);
+            if (!entryMatch) entryMatch = content.match(/Entry:\s*\$?([\d,\.]+)/i);
+            if (!entryMatch) entryMatch = content.match(/entry:\s*\$?([\d,\.]+)/i);
             const entry = entryMatch ? entryMatch[1] : '—';
 
-            const targetMatch = content.match(/TARGET\s*1:\s*\$?([\d,\.]+)/i);
+            // Target - несколько вариантов
+            let targetMatch = content.match(/TARGET\s*1:\s*\$?([\d,\.]+)/i);
+            if (!targetMatch) targetMatch = content.match(/Target:\s*\$?([\d,\.]+)/i);
+            if (!targetMatch) targetMatch = content.match(/target\s*1:\s*\$?([\d,\.]+)/i);
             const target = targetMatch ? targetMatch[1] : '—';
 
-            const stopMatch = content.match(/STOP LOSS:\s*\$?([\d,\.]+)/i);
+            // Stop - несколько вариантов
+            let stopMatch = content.match(/STOP LOSS:\s*\$?([\d,\.]+)/i);
+            if (!stopMatch) stopMatch = content.match(/Stop:\s*\$?([\d,\.]+)/i);
+            if (!stopMatch) stopMatch = content.match(/stop loss:\s*\$?([\d,\.]+)/i);
             const stop = stopMatch ? stopMatch[1] : '—';
 
-            const rrMatch = content.match(/Risk\/Reward:\s*1:([\d\.]+)/i);
+            // Risk/Reward
+            let rrMatch = content.match(/Risk\/Reward:\s*1:([\d\.]+)/i);
+            if (!rrMatch) rrMatch = content.match(/Risk\/Reward\s*1:([\d\.]+)/i);
             const rr = rrMatch ? rrMatch[1] : '—';
 
-            const convictionMatch = content.match(/CONFIDENCE:\s*([\d]+)%/i);
+            // Conviction/Confidence
+            let convictionMatch = content.match(/CONFIDENCE:\s*([\d]+)%/i);
+            if (!convictionMatch) convictionMatch = content.match(/Confidence:\s*([\d]+)%/i);
             const conviction = convictionMatch ? convictionMatch[1] + '%' : '—';
 
-            const changeMatch = content.match(/Change:\s*([+\-][\d\.]+)%/i);
+            // 24h Change
+            let changeMatch = content.match(/Change:\s*([+\-][\d\.]+)%/i);
+            if (!changeMatch) changeMatch = content.match(/change:\s*([+\-][\d\.]+)%/i);
             const change = changeMatch ? changeMatch[1] + '%' : '—';
 
+            // Обновляем DOM
             document.getElementById('signalSymbol').textContent = `${symbol}/USDT`;
 
             const statusEl = document.getElementById('signalStatus');
@@ -639,6 +656,7 @@
             changeEl.textContent = change;
             changeEl.className = 'value ' + (change.startsWith('+') ? 'green' : 'red');
 
+            // Яркий текст для модели - делаем максимально читаемым
             document.getElementById('signalFull').textContent = content;
 
             signalBox.classList.add('show');
