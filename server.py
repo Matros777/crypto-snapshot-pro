@@ -1,3 +1,174 @@
+"""
+Crypto Snapshot Pro — x402 Agent for Agentic.Market
+Agent ID: #3613
+Service: Professional Multi-Factor Market Analysis ($0.025 per request)
+"""
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+import httpx
+import time
+import base64
+import json
+import logging
+import sys
+import os
+from typing import Optional, Any
+from dotenv import load_dotenv
+
+# ============================================================
+# ЗАГРУЗКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
+# ============================================================
+load_dotenv()
+
+# ============================================================
+# ЛОГИРОВАНИЕ
+# ============================================================
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger("crypto-snapshot")
+
+app = FastAPI(title="Crypto Snapshot Pro x402 Agent")
+
+# ============================================================
+# RPC ДЛЯ ПРОВЕРКИ ТРАНЗАКЦИЙ
+# ============================================================
+ALCHEMY_URL = os.getenv("ALCHEMY_URL", "https://base-mainnet.g.alchemy.com/v2/U8khpdvO0rAwu9ojyBOpr")
+USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+PAYTO_ADDRESS = "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3"
+paid_tx_cache = {}
+
+async def verify_tx_payment(tx_hash: str) -> bool:
+    """Проверяет транзакцию на отправку USDC на наш кошелек"""
+    if tx_hash in paid_tx_cache:
+        return paid_tx_cache[tx_hash]
+    
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                ALCHEMY_URL,
+                json={
+                    "jsonrpc": "2.0",
+                    "method": "eth_getTransactionReceipt",
+                    "params": [tx_hash],
+                    "id": 1
+                }
+            )
+            
+            if response.status_code != 200:
+                paid_tx_cache[tx_hash] = False
+                return False
+            
+            data = response.json()
+            receipt = data.get("result")
+            
+            if not receipt or receipt.get("status") != "0x1":
+                paid_tx_cache[tx_hash] = False
+                return False
+            
+            logs = receipt.get("logs", [])
+            for log in logs:
+                if log.get("address", "").lower() == USDC_ADDRESS.lower():
+                    topics = log.get("topics", [])
+                    if len(topics) >= 3:
+                        to_address = "0x" + topics[2][-40:]
+                        if to_address.lower() == PAYTO_ADDRESS.lower():
+                            paid_tx_cache[tx_hash] = True
+                            return True
+            
+            paid_tx_cache[tx_hash] = False
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ TX verification error: {e}")
+        paid_tx_cache[tx_hash] = False
+        return False
+
+
+# ============================================================
+# ASI AI НАСТРОЙКИ
+# ============================================================
+ASI_API_KEY = os.getenv("ASI_API_KEY", "")
+ASI_MODELS = [
+    {"id": "asi1", "name": "ASI1"},
+    {"id": "asi1-mini", "name": "ASI1 Mini"}
+]
+
+# ============================================================
+# ПРОФЕССИОНАЛЬНЫЙ ПРОМПТ ДЛЯ ТРЕЙДЕРА
+# ============================================================
+PROFESSIONAL_PROMPT = """
+You are a professional crypto trader with 20+ years of experience managing institutional portfolios. 
+You provide conservative, data-driven trading advice with clear risk management.
+
+Based on the technical analysis below, provide a professional trading recommendation:
+
+### TECHNICAL DATA:
+Symbol: {symbol}
+Current Price: ${price}
+24h Change: {change}%
+RSI(14): {rsi}
+EMA(20): ${ema20}
+EMA(50): ${ema50}
+Volume Ratio: {volume_ratio}x
+Signal: {signal}
+Conviction: {conviction}
+Entry: ${entry}
+Target: ${target}
+Stop: ${stop}
+Risk/Reward: 1:{risk_reward}
+Support: ${support}
+Resistance: ${resistance}
+24h High: ${high_24h}
+24h Low: ${low_24h}
+Long Score: {long_score}
+Short Score: {short_score}
+
+### YOUR ANALYSIS MUST INCLUDE:
+
+1. **MARKET ASSESSMENT** (2-3 sentences on current market context)
+2. **TRADE RECOMMENDATION**: Clearly state: **LONG** / **SHORT** / **HOLD**
+3. **PRICE PREDICTION 24H**: Where do you see price in 24 hours? (with percentage)
+4. **ENTRY ZONE**: Specific price or range to enter
+5. **TARGET LEVELS**: T1 (conservative), T2 (optimistic)
+6. **STOP LOSS**: Specific price with rationale
+7. **RISK ASSESSMENT**: Low/Medium/High with explanation
+8. **CONFIDENCE LEVEL**: Percentage (0-100%)
+9. **KEY LEVELS TO WATCH**: Critical support/resistance
+10. **FINAL RECOMMENDATION**: One clear sentence summarizing action
+
+### FORMAT EXAMPLE:
+```
+📊 MARKET ASSESSMENT:
+[2-3 sentences]
+
+🎯 RECOMMENDATION: LONG/SHORT/HOLD
+[Clear reason]
+
+📈 24H PRICE PREDICTION:
+[Direction and percentage]
+
+📍 ENTRY ZONE: $X.XX - $X.XX
+🎯 TARGET 1: $X.XX (+X%)
+🎯 TARGET 2: $X.XX (+X%)
+🛑 STOP LOSS: $X.XX (-X%)
+
+⚠️ RISK: Low/Medium/High
+[Explanation]
+
+🎯 CONFIDENCE: X%
+
+📌 KEY LEVELS:
+  Support: $X.XX
+  Resistance: $X.XX
+
+💡 FINAL RECOMMENDATION:
+[One clear actionable sentence]
+```
 
 ### IMPORTANT RULES:
 - Be CONSERVATIVE - prioritize capital preservation
@@ -215,10 +386,8 @@ _CACHE_TTL = 60
 # ============================================================
 MIN_AMOUNT = 25000
 
-
 class AgentResponse(BaseModel):
     message: dict
-
 
 # ============================================================
 # FACILITATOR VERIFICATION
@@ -286,7 +455,6 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         logger.error(f"❌ Facilitator error: {e}")
         return False
 
-
 # ============================================================
 # x402 PAYMENT CONFIGURATION
 # ============================================================
@@ -337,7 +505,6 @@ PAYMENT_CONFIG = {
         }
     }
 }
-
 
 def create_402_response():
     """Возвращает 402 Payment Required"""
@@ -762,7 +929,6 @@ async def payable_endpoint(request: Request):
 async def crypto_snapshot(request: Request):
     symbol = None
     tx_hash = None
-    is_x402 = False
     
     if request.method == "POST":
         try:
@@ -879,56 +1045,6 @@ async def crypto_snapshot(request: Request):
 
 
 # ============================================================
-# СТРАНИЦА СИГНАЛА ДЛЯ ТЕРМИНАЛА
-# ============================================================
-@app.get("/signal")
-async def signal_page(request: Request):
-    """Страница с сигналом для терминала"""
-    symbol = request.query_params.get("symbol", "BTC")
-    
-    try:
-        signal_data = await generate_signal_data(symbol)
-        ai_analysis = await generate_ai_analysis(symbol, signal_data)
-        
-        html = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Crypto Snapshot Pro — {symbol}</title>
-    <style>
-        body {{ background: #0a0e27; color: #e0e0e0; font-family: monospace; display: flex; justify-content: center; padding: 40px; }}
-        .container {{ max-width: 800px; }}
-        .signal-box {{ background: rgba(255,255,255,0.05); padding: 30px; border-radius: 16px; white-space: pre-wrap; border: 1px solid rgba(0,212,255,0.1); }}
-        .footer {{ margin-top: 30px; color: #555; font-size: 12px; text-align: center; }}
-        a {{ color: #00d4ff; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1 style="text-align:center;color:#00d4ff;">📊 {symbol}/USDT</h1>
-        <div class="signal-box">{ai_analysis}</div>
-        <div class="footer">
-            🔗 <a href="/app">Back to main page</a> · 
-            ⚠️ Not financial advice
-        </div>
-    </div>
-</body>
-</html>
-"""
-        return HTMLResponse(html)
-        
-    except Exception as e:
-        return HTMLResponse(f"""
-        <html><body style="background:#0a0e27;color:#fff;padding:40px;">
-            <h1 style="color:#ff4444;">❌ Error</h1>
-            <p>{str(e)}</p>
-            <a href="/app" style="color:#00d4ff;">← Back</a>
-        </body></html>
-        """, status_code=500)
-
-
-# ============================================================
 # ВЕБ-ИНТЕРФЕЙС
 # ============================================================
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -969,3 +1085,6 @@ async def root():
             "/signal": "Signal page"
         }
     }
+---
+
+**Босс, вот ПОЛНЫЙ код!** Скопируйте целиком в `server.py` и залейте на Render. 🫡
