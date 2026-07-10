@@ -28,31 +28,11 @@ logger = logging.getLogger("crypto-snapshot")
 
 app = FastAPI(title="Crypto Snapshot Pro x402 Agent")
 
-# ============================================================
-# ГЛАВНАЯ СТРАНИЦА — РЕДИРЕКТ НА /app
-# ============================================================
-@app.get("/")
-async def root():
-    return RedirectResponse(url="/app")
-
-# ============================================================
-# ЯНДЕКС ФАЙЛ ДЛЯ ВЕРИФИКАЦИИ
-# ============================================================
-@app.get("/yandex_d100e212bdd18c7b.html")
-async def yandex_verify():
-    return HTMLResponse("""
-    <html>
-        <head>
-            <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-        </head>
-        <body>Verification: d100e212bdd18c7b</body>
-    </html>
-    """)
-
 ASI_API_KEY = os.getenv("ASI_API_KEY", "")
 ASI_MODELS = [
     {"id": "asi1", "name": "ASI1"},
-
+    {"id": "asi1-mini", "name": "ASI1 Mini"}
+]
 
 PROFESSIONAL_PROMPT = """
 You are a professional crypto trader with 20+ years of experience managing institutional portfolios.
@@ -967,3 +947,10 @@ async def yandex_verify():
         <body>Verification: d100e212bdd18c7b</body>
     </html>
     """)
+
+# ============================================================
+# ГЛАВНАЯ СТРАНИЦА — РЕДИРЕКТ НА /app
+# ============================================================
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/app")
