@@ -50,7 +50,7 @@ class AgentResponse(BaseModel):
 # ============================================================
 # FACILITATOR VERIFICATION
 # ============================================================
-FACILITATOR_URL = "https://facilitator.openx402.ai"  # без / в конце!
+FACILITATOR_URL = "https://facilitator.openx402.ai"
 
 async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
     """Полная проверка платежа через OpenFacilitator"""
@@ -115,7 +115,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION - С BAZAAR EXTENSION
+# x402 PAYMENT CONFIGURATION - ИСПРАВЛЕННЫЙ ДЛЯ AWAL
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
@@ -131,11 +131,7 @@ PAYMENT_CONFIG = {
             "amount": "25000",
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
-            "maxTimeoutSeconds": 300,
-            "extra": {
-                "name": "USD Coin",
-                "version": "2"
-            }
+            "maxTimeoutSeconds": 300
         }
     ],
     "extensions": {
@@ -144,7 +140,9 @@ PAYMENT_CONFIG = {
                 "input": {
                     "type": "http",
                     "method": "POST",
-                    "body": {},
+                    "body": {
+                        "symbol": "ETH"
+                    },
                     "bodyType": "json"
                 },
                 "output": {
@@ -175,8 +173,7 @@ def create_402_response():
         content="Payment Required",
         status_code=402,
         headers={
-            "PAYMENT-REQUIRED": encoded,
-            "content-type": "text/plain"
+            "PAYMENT-REQUIRED": encoded
         }
     )
 
@@ -545,9 +542,9 @@ async def payable_endpoint(request: Request):
 
 
 # ============================================================
-# ОСНОВНОЙ ЭНДПОИНТ
+# ОСНОВНОЙ ЭНДПОИНТ - ТОЛЬКО POST
 # ============================================================
-@app.api_route("/", methods=["GET", "POST"])
+@app.post("/")
 async def crypto_snapshot(request: Request):
     payment_header = (
         request.headers.get("x-payment") or
@@ -564,29 +561,25 @@ async def crypto_snapshot(request: Request):
             status_code=402
         )
    
+    try:
+        body = await request.json()
+    except:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
     symbol = None
-   
-    if request.method == "POST":
-        try:
-            body = await request.json()
-        except:
-            raise HTTPException(status_code=400, detail="Invalid JSON body")
-       
-        if "message" in body and isinstance(body["message"], dict):
-            symbol = body["message"].get("content", "").strip()
-        elif isinstance(body, dict) and "symbol" in body:
-            symbol = body["symbol"].strip()
-        elif "content" in body:
-            symbol = body["content"].strip()
-        elif "message" in body and isinstance(body["message"], str):
-            symbol = body["message"].strip()
-    else:
-        symbol = request.query_params.get("symbol", "ETH")
+    if "message" in body and isinstance(body["message"], dict):
+        symbol = body["message"].get("content", "").strip()
+    elif isinstance(body, dict) and "symbol" in body:
+        symbol = body["symbol"].strip()
+    elif "content" in body:
+        symbol = body["content"].strip()
+    elif "message" in body and isinstance(body["message"], str):
+        symbol = body["message"].strip()
    
     if not symbol:
         return AgentResponse(message={
             "role": "assistant",
-            "content": "📊 CRYPTO SNAPSHOT PRO\n\nSend a symbol to analyze.\n\nExamples:\n• BTC\n• ETH\n• SOL\n• DOGE\n• XRP\n\nUsage: POST {\"symbol\": \"BTC\"} or GET ?symbol=BTC"
+            "content": "📊 CRYPTO SNAPSHOT PRO\n\nSend a symbol to analyze.\n\nExamples:\n• BTC\n• ETH\n• SOL\n• DOGE\n• XRP\n\nUsage: POST {\"symbol\": \"BTC\"}"
         })
    
     symbol = symbol.upper()
@@ -714,14 +707,14 @@ async def root():
     return {
         "service": "Crypto Snapshot Pro x402 Agent",
         "agentId": "3613",
-        "version": "3.2.1",
+        "version": "3.3.0",
         "data_source": "Kraken Public API (REAL DATA ONLY, NO FALLBACK)",
         "supported_pairs": "All Kraken USD pairs (500+ pairs)",
         "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "8-Factor Scoring"],
         "x402": True,
         "settle": "OpenFacilitator",
         "endpoints": {
-            "/": "Main endpoint (POST/GET)",
+            "/": "Main endpoint (POST only - requires x402 payment)",
             "/payable": "x402 verification endpoint (POST)",
             "/health": "Health check (GET)",
         }
