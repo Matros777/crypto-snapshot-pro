@@ -4,7 +4,7 @@ Agent ID: #3613
 Service: Professional Multi-Factor Market Analysis ($0.025 per request)
 """
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import httpx
@@ -912,7 +912,7 @@ async def crypto_snapshot(request: Request):
 ⚠️  Risk Disclosure: This is NOT financial advice. Always manage risk. Past performance does not guarantee future results.
 """
 
-              return AgentResponse(message={"role": "assistant", "content": result})
+        return AgentResponse(message={"role": "assistant", "content": result})
 
     except HTTPException:
         raise
@@ -951,8 +951,6 @@ async def yandex_verify():
 # ============================================================
 # ГЛАВНАЯ СТРАНИЦА — РЕДИРЕКТ НА /app
 # ============================================================
-from fastapi.responses import RedirectResponse
-
 @app.get("/")
 async def root():
     return RedirectResponse(url="/app")
