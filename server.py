@@ -715,7 +715,10 @@ async def payable_endpoint(request: Request):
 
     return {"status": "ok", "message": "Payment verified"}
 
-@app.api_route("/", methods=["GET", "POST"])
+# ============================================================
+# API — НА /api (ПЕРЕНЕСЕНО С /)
+# ============================================================
+@app.api_route("/api", methods=["GET", "POST"])
 async def crypto_snapshot(request: Request):
     symbol = None
     tx_hash = None
