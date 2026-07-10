@@ -27,9 +27,9 @@ logger = logging.getLogger("crypto-snapshot")
 app = FastAPI(title="Crypto Snapshot Pro x402 Agent")
 
 # ============================================================
-# ИСТОЧНИК ДАННЫХ - Binance (публичный, БЕЗ КЛЮЧА)
+# ИСТОЧНИК ДАННЫХ - Kraken (публичный, БЕЗ КЛЮЧА)
 # ============================================================
-BINANCE_API = "https://api.binance.com/api/v3"
+KRAKEN_API = "https://api.kraken.com/0/public"
 _cache = {}
 _CACHE_TTL = 60
 
@@ -50,7 +50,7 @@ class AgentResponse(BaseModel):
 # ============================================================
 # FACILITATOR VERIFICATION
 # ============================================================
-FACILITATOR_URL = "https://facilitator.openx402.ai"
+FACILITATOR_URL = "https://facilitator.openx402.ai"  # без / в конце!
 
 async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
     """Полная проверка платежа через OpenFacilitator"""
@@ -115,13 +115,13 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
 
 
 # ============================================================
-# x402 PAYMENT CONFIGURATION - ПРОСТАЯ СТРУКТУРА
+# x402 PAYMENT CONFIGURATION - С BAZAAR EXTENSION
 # ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com/",
-        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports all Binance USDT pairs (500+ pairs including BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
+        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports all Kraken USD pairs (500+ pairs including BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
         "mimeType": "application/json"
     },
     "accepts": [
@@ -132,11 +132,9 @@ PAYMENT_CONFIG = {
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
             "maxTimeoutSeconds": 300,
-            "domain": {
+            "extra": {
                 "name": "USD Coin",
-                "version": "2",
-                "chainId": 8453,
-                "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                "version": "2"
             }
         }
     ],
@@ -146,9 +144,7 @@ PAYMENT_CONFIG = {
                 "input": {
                     "type": "http",
                     "method": "POST",
-                    "body": {
-                        "symbol": "ETH"
-                    },
+                    "body": {},
                     "bodyType": "json"
                 },
                 "output": {
@@ -179,95 +175,187 @@ def create_402_response():
         content="Payment Required",
         status_code=402,
         headers={
-            "PAYMENT-REQUIRED": encoded
+            "PAYMENT-REQUIRED": encoded,
+            "content-type": "text/plain"
         }
     )
 
 
 # ============================================================
-# Binance API
+# Kraken API - ДИНАМИЧЕСКАЯ ЗАГРУЗКА ВСЕХ ПАР, БЕЗ ФОЛБЭКОВ!
 # ============================================================
+KRAKEN_PAIRS_CACHE = {}
+KRAKEN_PAIRS_CACHE_TIME = 0
+
+async def get_all_kraken_pairs() -> dict:
+    """Загружает все доступные пары с Kraken с несколькими форматами"""
+    global KRAKEN_PAIRS_CACHE, KRAKEN_PAIRS_CACHE_TIME
+    
+    now = time.time()
+    if KRAKEN_PAIRS_CACHE and now - KRAKEN_PAIRS_CACHE_TIME < 3600:
+        return KRAKEN_PAIRS_CACHE
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(f"{KRAKEN_API}/AssetPairs")
+            if response.status_code != 200:
+                logger.error(f"❌ Failed to load Kraken pairs: HTTP {response.status_code}")
+                raise HTTPException(status_code=503, detail="Market data temporarily unavailable")
+            
+            data = response.json()
+            if data.get("error"):
+                logger.error(f"❌ Kraken API error: {data['error']}")
+                raise HTTPException(status_code=503, detail="Market data temporarily unavailable")
+            
+            pairs = {}
+            for pair_id, pair_data in data.get("result", {}).items():
+                wsname = pair_data.get("wsname")
+                if wsname and wsname.endswith("/USD"):
+                    base = wsname.replace("/", "")
+                    pairs[base] = pair_id
+                    pairs[base + "T"] = pair_id
+                    pairs[base.replace("USD", "")] = pair_id
+            
+            if not pairs:
+                logger.error("❌ No pairs loaded from Kraken")
+                raise HTTPException(status_code=503, detail="Market data temporarily unavailable")
+            
+            KRAKEN_PAIRS_CACHE = pairs
+            KRAKEN_PAIRS_CACHE_TIME = now
+            logger.info(f"✅ Loaded {len(pairs)} pairs from Kraken")
+            return pairs
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Failed to load Kraken pairs: {e}")
+        raise HTTPException(status_code=503, detail="Market data temporarily unavailable")
+
+async def get_kraken_pair(symbol: str) -> Optional[str]:
+    """Получает Kraken пару для символа"""
+    pairs = await get_all_kraken_pairs()
+    return pairs.get(symbol)
+
+
 async def fetch_ticker(symbol: str) -> dict:
-    """Получение данных через Binance"""
+    """Получение данных через Kraken - ТОЛЬКО РЕАЛЬНЫЕ ДАННЫЕ!"""
     cache_key = f"ticker_{symbol}"
     now = time.time()
     if cache_key in _cache and now - _cache[cache_key]["time"] < _CACHE_TTL:
         return _cache[cache_key]["data"]
     
+    pair = await get_kraken_pair(symbol)
+    if not pair:
+        logger.warning(f"❌ Symbol {symbol} not supported by Kraken")
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Symbol {symbol} not supported. Available pairs: all Kraken USD pairs."
+        )
+    
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            logger.info(f"📊 Fetching {symbol} from Binance...")
-            
+            logger.info(f"📊 Fetching {symbol} from Kraken...")
             response = await client.get(
-                f"{BINANCE_API}/ticker/24hr",
-                params={"symbol": symbol}
+                f"{KRAKEN_API}/Ticker",
+                params={"pair": pair}
             )
             
             if response.status_code != 200:
-                logger.error(f"❌ Binance error: {response.status_code}")
+                logger.error(f"❌ Kraken error: {response.status_code}")
                 raise HTTPException(status_code=503, detail="Market data unavailable")
             
             data = response.json()
-            price = float(data.get("lastPrice", 0))
+            if data.get("error"):
+                logger.error(f"❌ Kraken error: {data['error']}")
+                raise HTTPException(status_code=503, detail="Market data unavailable")
+            
+            result_data = list(data.get("result", {}).values())[0]
+            price = float(result_data.get("c", [0])[0])
             
             if price == 0:
                 raise HTTPException(status_code=503, detail="Invalid price data")
             
+            try:
+                ohlc_response = await client.get(
+                    f"{KRAKEN_API}/OHLC",
+                    params={"pair": pair, "interval": 1440, "count": 2}
+                )
+                if ohlc_response.status_code == 200:
+                    ohlc_data = ohlc_response.json()
+                    if not ohlc_data.get("error"):
+                        ohlc_list = list(ohlc_data.get("result", {}).values())[0]
+                        if len(ohlc_list) >= 2:
+                            old_price = float(ohlc_list[-2][4])
+                            change_24h = ((price - old_price) / old_price) * 100
+                        else:
+                            change_24h = 0
+                    else:
+                        change_24h = 0
+                else:
+                    change_24h = 0
+            except:
+                change_24h = 0
+            
             result = {
                 "price": price,
-                "change": float(data.get("priceChangePercent", 0)),
-                "high": float(data.get("highPrice", 0)),
-                "low": float(data.get("lowPrice", 0)),
-                "volume": float(data.get("volume", 0)),
+                "change": change_24h,
+                "high": float(result_data.get("h", [price])[0]),
+                "low": float(result_data.get("l", [price])[0]),
+                "volume": float(result_data.get("v", [0])[0]),
                 "time": time.time()
             }
             
             _cache[cache_key] = {"data": result, "time": now}
-            logger.info(f"✅ {symbol} price: ${price}, change: {result['change']:.2f}%")
+            logger.info(f"✅ {symbol} price: ${price}, change: {change_24h:.2f}%")
             return result
             
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Binance error: {e}")
+        logger.error(f"❌ Kraken error: {e}")
         raise HTTPException(status_code=503, detail="Market data unavailable")
 
 
 async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> list[dict]:
-    """Получение исторических данных через Binance"""
+    """Получение исторических данных через Kraken - ТОЛЬКО РЕАЛЬНЫЕ ДАННЫЕ!"""
     cache_key = f"klines_{symbol}_{interval}_{limit}"
     now = time.time()
     if cache_key in _cache and now - _cache[cache_key]["time"] < _CACHE_TTL:
         return _cache[cache_key]["data"]
     
+    pair = await get_kraken_pair(symbol)
+    if not pair:
+        raise HTTPException(status_code=404, detail=f"Symbol {symbol} not supported")
+    
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            logger.info(f"📊 Fetching klines for {symbol} from Binance...")
+            logger.info(f"📊 Fetching klines for {symbol} from Kraken...")
             response = await client.get(
-                f"{BINANCE_API}/klines",
-                params={
-                    "symbol": symbol,
-                    "interval": interval,
-                    "limit": limit
-                }
+                f"{KRAKEN_API}/OHLC",
+                params={"pair": pair, "interval": 1440, "count": limit}
             )
             
             if response.status_code != 200:
-                logger.error(f"❌ Binance klines error: {response.status_code}")
+                logger.error(f"❌ Kraken klines error: {response.status_code}")
                 raise HTTPException(status_code=503, detail="Historical data unavailable")
             
             data = response.json()
-            if not data or len(data) < 5:
+            if data.get("error"):
+                logger.error(f"❌ Kraken klines error: {data['error']}")
+                raise HTTPException(status_code=503, detail="Historical data unavailable")
+            
+            ohlc_data = list(data.get("result", {}).values())[0]
+            if not ohlc_data or len(ohlc_data) < 5:
                 raise HTTPException(status_code=503, detail="Insufficient historical data")
             
             klines = []
-            for candle in data:
+            for candle in ohlc_data[-limit:]:
                 klines.append({
                     'close': float(candle[4]),
                     'high': float(candle[2]),
                     'low': float(candle[3]),
-                    'volume': float(candle[5]),
-                    'time': int(candle[0])
+                    'volume': float(candle[6]),
+                    'time': int(candle[0]) * 1000
                 })
             
             _cache[cache_key] = {"data": klines, "time": now}
@@ -276,7 +364,7 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Binance klines error: {e}")
+        logger.error(f"❌ Kraken klines error: {e}")
         raise HTTPException(status_code=503, detail="Historical data unavailable")
 
 
@@ -457,9 +545,9 @@ async def payable_endpoint(request: Request):
 
 
 # ============================================================
-# ОСНОВНОЙ ЭНДПОИНТ - ТОЛЬКО POST
+# ОСНОВНОЙ ЭНДПОИНТ
 # ============================================================
-@app.post("/")
+@app.api_route("/", methods=["GET", "POST"])
 async def crypto_snapshot(request: Request):
     payment_header = (
         request.headers.get("x-payment") or
@@ -476,25 +564,29 @@ async def crypto_snapshot(request: Request):
             status_code=402
         )
    
-    try:
-        body = await request.json()
-    except:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
-    
     symbol = None
-    if "message" in body and isinstance(body["message"], dict):
-        symbol = body["message"].get("content", "").strip()
-    elif isinstance(body, dict) and "symbol" in body:
-        symbol = body["symbol"].strip()
-    elif "content" in body:
-        symbol = body["content"].strip()
-    elif "message" in body and isinstance(body["message"], str):
-        symbol = body["message"].strip()
+   
+    if request.method == "POST":
+        try:
+            body = await request.json()
+        except:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+       
+        if "message" in body and isinstance(body["message"], dict):
+            symbol = body["message"].get("content", "").strip()
+        elif isinstance(body, dict) and "symbol" in body:
+            symbol = body["symbol"].strip()
+        elif "content" in body:
+            symbol = body["content"].strip()
+        elif "message" in body and isinstance(body["message"], str):
+            symbol = body["message"].strip()
+    else:
+        symbol = request.query_params.get("symbol", "ETH")
    
     if not symbol:
         return AgentResponse(message={
             "role": "assistant",
-            "content": "📊 CRYPTO SNAPSHOT PRO\n\nSend a symbol to analyze.\n\nExamples:\n• BTC\n• ETH\n• SOL\n• DOGE\n• XRP\n\nUsage: POST {\"symbol\": \"BTC\"}"
+            "content": "📊 CRYPTO SNAPSHOT PRO\n\nSend a symbol to analyze.\n\nExamples:\n• BTC\n• ETH\n• SOL\n• DOGE\n• XRP\n\nUsage: POST {\"symbol\": \"BTC\"} or GET ?symbol=BTC"
         })
    
     symbol = symbol.upper()
@@ -622,14 +714,14 @@ async def root():
     return {
         "service": "Crypto Snapshot Pro x402 Agent",
         "agentId": "3613",
-        "version": "3.7.0",
-        "data_source": "Binance Public API (REAL DATA ONLY, NO FALLBACK)",
-        "supported_pairs": "All Binance USDT pairs (500+ pairs)",
+        "version": "3.2.1",
+        "data_source": "Kraken Public API (REAL DATA ONLY, NO FALLBACK)",
+        "supported_pairs": "All Kraken USD pairs (500+ pairs)",
         "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "8-Factor Scoring"],
         "x402": True,
         "settle": "OpenFacilitator",
         "endpoints": {
-            "/": "Main endpoint (POST only - requires x402 payment)",
+            "/": "Main endpoint (POST/GET)",
             "/payable": "x402 verification endpoint (POST)",
             "/health": "Health check (GET)",
         }
