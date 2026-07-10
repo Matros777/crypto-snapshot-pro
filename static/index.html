@@ -366,7 +366,7 @@
             </div>
             <div class="signal-full" id="signalFull"></div>
             <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06);font-size:12px;color:#555;">
-                <div>📖 <a href="https://gist.github.com/Matros777/c5d95532248eaaf2b86fd04f8a2753b7" target="_blank">Full Guide</a> · 🐦 <a href="https://x.com/your_handle" target="_blank">Twitter</a> · 🌐 <a href="https://openx402.ai/projects/0x5b7efd37546d6bb02463339ceaddd80997ac97b3" target="_blank">OpenX402</a></div>
+                <div>📖 <a href="https://gist.github.com/Matros777/c5d95532248eaaf2b86fd04f8a2753b7" target="_blank">Full Guide</a> · 🐦 <a href="https://x.com/VitalijMatros" target="_blank">Twitter</a> · 🌐 <a href="https://openx402.ai/projects/0x5b7efd37546d6bb02463339ceaddd80997ac97b3" target="_blank">OpenX402</a></div>
             </div>
         </div>
 
@@ -386,6 +386,15 @@
         const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
         const PRICE = "0.025";
         const CHAIN_ID = 8453;
+
+        // ============================================================
+        // USDC ABI (только нужные методы)
+        // ============================================================
+        const USDC_ABI = [
+            "function balanceOf(address owner) view returns (uint256)",
+            "function decimals() view returns (uint8)",
+            "function transfer(address to, uint256 amount) returns (bool)"
+        ];
 
         // ============================================================
         // STATE
@@ -454,22 +463,16 @@
                 const balanceEl = document.getElementById('walletBalance');
                 if (!signer) { balanceRow.style.display = 'none'; return; }
 
-                const usdcContract = new ethers.Contract(
-                    USDC,
-                    [
-                        'function balanceOf(address) view returns (uint256)',
-                        'function decimals() view returns (uint8)'
-                    ],
-                    provider
-                );
-
+                const usdcContract = new ethers.Contract(USDC, USDC_ABI, provider);
                 const decimals = await usdcContract.decimals();
                 const balance = await usdcContract.balanceOf(address);
                 const formatted = ethers.utils.formatUnits(balance, decimals);
 
                 balanceRow.style.display = 'flex';
                 balanceEl.textContent = `${formatted} USDC`;
-            } catch (e) {}
+            } catch (e) {
+                console.log('Balance update error:', e);
+            }
         }
 
         // ============================================================
@@ -519,15 +522,10 @@
             signalBox.classList.remove('show');
 
             try {
-                // 1. Проверяем баланс USDC
-                const usdcContract = new ethers.Contract(
-                    USDC,
-                    [
-                        'function balanceOf(address) view returns (uint256)',
-                        'function decimals() view returns (uint8)'
-                    ],
-                    provider
-                );
+                // 1. Создаем контракт USDC с правильным ABI
+                const usdcContract = new ethers.Contract(USDC, USDC_ABI, signer);
+
+                // 2. Проверяем баланс
                 const decimals = await usdcContract.decimals();
                 const balance = await usdcContract.balanceOf(address);
                 const formatted = ethers.utils.formatUnits(balance, decimals);
@@ -540,16 +538,23 @@
                     return;
                 }
 
-                // 2. Отправляем USDC
+                // 3. Отправляем USDC
                 const amount = ethers.utils.parseUnits(PRICE, decimals);
+                
+                showSuccess(`⏳ Sending ${PRICE} USDC... Please confirm in MetaMask.`);
+                getSignalBtn.innerHTML = '<span class="loading"></span> Waiting for confirmation...';
+
                 const tx = await usdcContract.transfer(PAYTO, amount);
                 
-                showSuccess(`⏳ Waiting for transaction confirmation...`);
-                getSignalBtn.innerHTML = '<span class="loading"></span> Waiting for confirmation...';
+                showSuccess(`⏳ Transaction sent! Waiting for confirmation...`);
+                getSignalBtn.innerHTML = '<span class="loading"></span> Waiting for block confirmation...';
 
                 await tx.wait();
 
-                // 3. Получаем сигнал с tx_hash
+                showSuccess(`✅ Payment confirmed! Getting your signal...`);
+                getSignalBtn.innerHTML = '<span class="loading"></span> Getting signal...';
+
+                // 4. Получаем сигнал с tx_hash
                 const response = await fetch(AGENT_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -559,18 +564,27 @@
                     })
                 });
 
-                // 4. Обрабатываем ответ
+                // 5. Обрабатываем ответ
                 if (response.status === 200) {
                     const data = await response.json();
                     displaySignal(data, symbol);
                     hideSuccess();
+                } else if (response.status === 402) {
+                    showError('Payment verification failed. Please try again.');
                 } else {
-                    showError('Payment successful but failed to get signal. Please try again.');
+                    const error = await response.text();
+                    showError('Failed to get signal: ' + error);
                 }
 
             } catch (error) {
-                showError('Error: ' + error.message);
-                console.error(error);
+                console.error('Full error:', error);
+                if (error.code === 'ACTION_REJECTED' || error.code === 4001) {
+                    showError('Transaction rejected in wallet.');
+                } else if (error.message && error.message.includes('insufficient funds')) {
+                    showError('Insufficient funds for gas. Please add some ETH for gas fees.');
+                } else {
+                    showError('Error: ' + (error.message || error));
+                }
             } finally {
                 isProcessing = false;
                 getSignalBtn.disabled = false;
