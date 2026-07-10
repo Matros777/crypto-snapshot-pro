@@ -9,42 +9,37 @@
     <!-- ============================================================ -->
     <title>Crypto Snapshot Pro — AI Trading Signals with x402 Payments</title>
     
-    <!-- Описание для Google -->
     <meta name="description" content="Crypto Snapshot Pro — AI-powered trading signals for 500+ crypto pairs. Pay 0.025 USDC via x402 protocol, get LONG/SHORT/HOLD signals with entry, target, stop levels.">
     <meta name="keywords" content="crypto signals, AI trading, Bitcoin, Ethereum, Solana, technical analysis, x402, USDC, Base network">
     <meta name="robots" content="index, follow">
     <link rel="canonical" href="https://crypto-snapshot-pro.onrender.com/app">
-    
-    <!-- Google Search Console -->
     <meta name="google-site-verification" content="your-verification-code">
     
-    <!-- Open Graph (для соцсетей и превью) -->
     <meta property="og:title" content="Crypto Snapshot Pro — AI Trading Signals">
     <meta property="og:description" content="AI-powered crypto signals with x402 payments. 0.025 USDC per request. LONG/SHORT/HOLD with entry, target, stop levels.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://crypto-snapshot-pro.onrender.com/app">
-    <meta property="og:image" content="https://i.postimg.cc/8cFw5pt9/android-icon-512x512.png">
+    <meta property="og:image" content="https://i.postimg.cc/8PY3S3P8/android-icon-512x512.png">
     <meta property="og:image:width" content="512">
     <meta property="og:image:height" content="512">
     <meta property="og:site_name" content="Crypto Snapshot Pro">
     
-    <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Crypto Snapshot Pro — AI Trading Signals">
     <meta name="twitter:description" content="AI-powered crypto signals. 0.025 USDC. LONG/SHORT/HOLD with professional analysis.">
-    <meta name="twitter:image" content="https://i.postimg.cc/8cFw5pt9/android-icon-512x512.png">
+    <meta name="twitter:image" content="https://i.postimg.cc/8PY3S3P8/android-icon-512x512.png">
     <meta name="twitter:site" content="@VitalijMatros">
     
     <!-- ============================================================ -->
-    <!-- FAVICON (512x512)                                           -->
+    <!-- FAVICON (НОВЫЙ - РОБОТ)                                     -->
     <!-- ============================================================ -->
-    <link rel="icon" type="image/png" sizes="512x512" href="https://i.postimg.cc/8cFw5pt9/android-icon-512x512.png">
-    <link rel="icon" type="image/png" sizes="192x192" href="https://i.postimg.cc/8cFw5pt9/android-icon-512x512.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="https://i.postimg.cc/8cFw5pt9/android-icon-512x512.png">
-    <link rel="apple-touch-icon" href="https://i.postimg.cc/8cFw5pt9/android-icon-512x512.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="https://i.postimg.cc/8PY3S3P8/android-icon-512x512.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="https://i.postimg.cc/8PY3S3P8/android-icon-512x512.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="https://i.postimg.cc/8PY3S3P8/android-icon-512x512.png">
+    <link rel="apple-touch-icon" href="https://i.postimg.cc/8PY3S3P8/android-icon-512x512.png">
     
     <!-- ============================================================ -->
-    <!-- SCHEMA MARKUP (для Google)                                  -->
+    <!-- SCHEMA MARKUP                                               -->
     <!-- ============================================================ -->
     <script type="application/ld+json">
     {
@@ -165,6 +160,29 @@
         }
         .wallet-status:hover { background: rgba(255,255,255,0.06); }
         .wallet-status.connected { border-color: rgba(255,255,255,0.15); color: #ffffff; }
+        
+        /* Hero текст */
+        .hero-text {
+            text-align: center;
+            padding: 4px 0 16px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            margin-bottom: 20px;
+        }
+        .hero-text p {
+            font-size: 14px;
+            color: #888;
+            font-weight: 300;
+            letter-spacing: 0.3px;
+            line-height: 1.6;
+        }
+        .hero-text p .highlight {
+            color: #ffffff;
+            font-weight: 500;
+        }
+        .hero-text p .gold {
+            color: #e8c88a;
+        }
+
         .card {
             background: rgba(255,255,255,0.02);
             border-radius: 16px;
@@ -404,7 +422,7 @@
     <div class="container">
         <div class="header">
             <div class="logo">
-                <div class="logo-emoji">📊</div>
+                <div class="logo-emoji">🤖</div>
                 <div class="logo-text">
                     <h1>Crypto <span class="accent">Snapshot</span> Pro <span class="signal-badge hold" id="headerSignal">● HOLD</span></h1>
                     <span class="sub">AI Trading Signals · $0.025/request</span>
@@ -413,6 +431,16 @@
             <div class="wallet-status" id="walletStatus" onclick="connectWallet()">
                 Connect Wallet
             </div>
+        </div>
+
+        <!-- Hero Text -->
+        <div class="hero-text">
+            <p>
+                🔗 Connect <span class="highlight">MetaMask</span>, 
+                pay <span class="gold">0.025 USDC</span>, 
+                and get an <span class="highlight">AI-powered signal</span> 
+                with professional analysis for your chosen crypto.
+            </p>
         </div>
 
         <div class="card">
@@ -494,7 +522,8 @@
         </div>
 
         <div class="footer">
-            Not financial advice · Always DYOR · x402
+            Not financial advice · Always DYOR · x402 · 
+            <a href="https://github.com/Matros777/crypto-snapshot-pro" target="_blank" style="color:#555;">Open Source</a>
         </div>
     </div>
 
