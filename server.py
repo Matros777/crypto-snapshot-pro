@@ -54,7 +54,7 @@ _CACHE_TTL = 60
 # ============================================================
 # ALCHEMY RPC & CONTRACTS
 # ============================================================
-ALCHEMY_URL = "https://base-mainnet.g.alchemy.com/v2/Ur"
+ALCHEMY_URL = "https://base-mainnet.g.alchemy.com/v2/U8khpdvO0rAwu9ojyBOpr"
 
 USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 PAYTO_ADDRESS = "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3"
