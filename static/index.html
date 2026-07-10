@@ -573,18 +573,20 @@
                     // Подписываем через MetaMask
                     const signature = await signer._signTypedData(domain, types, message);
 
-                    // Формируем payment payload
+                    // Формируем payment payload (кодируем в base64 как требует сервер)
                     const paymentPayload = {
                         ...message,
                         signature: signature
                     };
 
-                    // Отправляем с подписью
+                    const encodedPayload = btoa(JSON.stringify(paymentPayload));
+
+                    // Отправляем с подписью в заголовке
                     response = await fetch(AGENT_URL, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'x-payment': btoa(JSON.stringify(paymentPayload))
+                            'x-payment': encodedPayload
                         },
                         body: JSON.stringify({ symbol: symbol })
                     });
@@ -595,10 +597,20 @@
                     const data = await response.json();
                     displaySignal(data, symbol);
                 } else if (response.status === 402) {
-                    showError('Payment required. Please ensure you have 0.025 USDC.');
+                    // Пробуем прочитать ошибку
+                    try {
+                        const err = await response.text();
+                        showError('Payment required: ' + err);
+                    } catch {
+                        showError('Payment required. Please ensure you have 0.025 USDC.');
+                    }
                 } else {
-                    const error = await response.json();
-                    showError(error.detail || 'Failed to get signal.');
+                    try {
+                        const error = await response.json();
+                        showError(error.detail || 'Failed to get signal.');
+                    } catch {
+                        showError('Failed to get signal: ' + response.status);
+                    }
                 }
 
             } catch (error) {
