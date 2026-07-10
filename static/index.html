@@ -5,13 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Crypto Snapshot Pro — AI Trading Signals</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #0d1130 100%);
             min-height: 100vh;
             color: #e0e0e0;
@@ -59,13 +55,8 @@
             cursor: pointer;
             transition: all 0.3s;
         }
-        .wallet-status:hover {
-            background: rgba(255,255,255,0.15);
-        }
-        .wallet-status.connected {
-            border-color: #00d4ff;
-            color: #00d4ff;
-        }
+        .wallet-status:hover { background: rgba(255,255,255,0.15); }
+        .wallet-status.connected { border-color: #00d4ff; color: #00d4ff; }
         .card {
             background: rgba(255,255,255,0.03);
             border-radius: 16px;
@@ -95,10 +86,7 @@
             font-size: 14px;
             transition: all 0.3s;
         }
-        .pair-btn:hover {
-            background: rgba(255,255,255,0.12);
-            color: #fff;
-        }
+        .pair-btn:hover { background: rgba(255,255,255,0.12); color: #fff; }
         .pair-btn.active {
             background: rgba(0,212,255,0.2);
             border-color: #00d4ff;
@@ -124,9 +112,7 @@
             border-color: #00d4ff;
             box-shadow: 0 0 20px rgba(0,212,255,0.1);
         }
-        .input-group input::placeholder {
-            color: #555;
-        }
+        .input-group input::placeholder { color: #555; }
         .btn-primary {
             background: linear-gradient(90deg, #00d4ff, #7b2ffc);
             border: none;
@@ -155,19 +141,10 @@
             border-bottom: 1px solid rgba(255,255,255,0.04);
             font-size: 14px;
         }
-        .info-row:last-child {
-            border-bottom: none;
-        }
-        .info-label {
-            color: #888;
-        }
-        .info-value {
-            color: #fff;
-            font-weight: 500;
-        }
-        .info-value.usdc {
-            color: #00d4ff;
-        }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { color: #888; }
+        .info-value { color: #fff; font-weight: 500; }
+        .info-value.usdc { color: #00d4ff; }
         .signal-box {
             background: rgba(255,255,255,0.03);
             border-radius: 16px;
@@ -192,10 +169,7 @@
             flex-wrap: wrap;
             gap: 8px;
         }
-        .signal-symbol {
-            font-size: 20px;
-            font-weight: 700;
-        }
+        .signal-symbol { font-size: 20px; font-weight: 700; }
         .signal-status {
             padding: 4px 16px;
             border-radius: 20px;
@@ -251,16 +225,9 @@
             max-height: 400px;
             overflow-y: auto;
         }
-        .signal-full::-webkit-scrollbar {
-            width: 4px;
-        }
-        .signal-full::-webkit-scrollbar-track {
-            background: rgba(255,255,255,0.02);
-        }
-        .signal-full::-webkit-scrollbar-thumb {
-            background: rgba(255,255,255,0.1);
-            border-radius: 2px;
-        }
+        .signal-full::-webkit-scrollbar { width: 4px; }
+        .signal-full::-webkit-scrollbar-track { background: rgba(255,255,255,0.02); }
+        .signal-full::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
         .loading {
             display: inline-block;
             width: 16px;
@@ -272,22 +239,15 @@
             margin-right: 8px;
             vertical-align: middle;
         }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
         .footer {
             text-align: center;
             margin-top: 30px;
             font-size: 12px;
             color: #555;
         }
-        .footer a {
-            color: #00d4ff;
-            text-decoration: none;
-        }
-        .footer a:hover {
-            text-decoration: underline;
-        }
+        .footer a { color: #00d4ff; text-decoration: none; }
+        .footer a:hover { text-decoration: underline; }
         .error {
             color: #ff4444;
             background: rgba(255,68,68,0.1);
@@ -296,9 +256,7 @@
             margin-top: 12px;
             display: none;
         }
-        .error.show {
-            display: block;
-        }
+        .error.show { display: block; }
         @media (max-width: 600px) {
             .container { padding: 20px; }
             .header { flex-direction: column; align-items: stretch; }
@@ -411,7 +369,7 @@
         const PAYTO = "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3";
         const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
         const PRICE = "0.025";
-        const CHAIN_ID = 8453; // Base
+        const CHAIN_ID = 8453;
 
         // ============================================================
         // STATE
@@ -446,15 +404,13 @@
                 signer = provider.getSigner();
                 address = await signer.getAddress();
 
-                // Check network
                 const network = await provider.getNetwork();
                 if (network.chainId !== CHAIN_ID) {
                     try {
                         await window.ethereum.request({
                             method: 'wallet_switchEthereumChain',
-                            params: [{ chainId: '0x2105' }] // 8453 in hex
+                            params: [{ chainId: '0x2105' }]
                         });
-                        // Wait for switch
                         await new Promise(resolve => setTimeout(resolve, 1000));
                         await connectWallet();
                         return;
@@ -466,10 +422,7 @@
 
                 walletStatusEl.textContent = `🟢 ${address.slice(0,6)}...${address.slice(-4)}`;
                 walletStatusEl.classList.add('connected');
-
-                // Check balance
                 await updateBalance();
-
                 hideError();
                 getSignalBtn.disabled = false;
 
@@ -482,13 +435,8 @@
             try {
                 const balanceRow = document.getElementById('walletBalanceRow');
                 const balanceEl = document.getElementById('walletBalance');
+                if (!signer) { balanceRow.style.display = 'none'; return; }
 
-                if (!signer) {
-                    balanceRow.style.display = 'none';
-                    return;
-                }
-
-                // Get USDC balance
                 const usdcContract = new ethers.Contract(
                     USDC,
                     [
@@ -504,9 +452,7 @@
 
                 balanceRow.style.display = 'flex';
                 balanceEl.textContent = `${formatted} USDC`;
-            } catch (e) {
-                // Silent fail
-            }
+            } catch (e) {}
         }
 
         // ============================================================
@@ -531,7 +477,7 @@
         });
 
         // ============================================================
-        // MAIN: GET SIGNAL
+        // GET SIGNAL — x402 через MetaMask
         // ============================================================
         async function getSignal() {
             if (isProcessing) return;
@@ -555,16 +501,24 @@
             signalBox.classList.remove('show');
 
             try {
-                // 1. Try to get signal (may return 402)
+                // 1. Первый запрос — получаем 402
                 let response = await fetch(AGENT_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ symbol: symbol })
                 });
 
-                // 2. If 402 - handle payment
+                // 2. Если 402 — подписываем через MetaMask
                 if (response.status === 402) {
-                    // Check if user has enough USDC
+                    const paymentHeader = response.headers.get('payment-required');
+                    if (!paymentHeader) {
+                        throw new Error('No payment-required header');
+                    }
+
+                    // Парсим требования
+                    const requirements = JSON.parse(atob(paymentHeader));
+
+                    // Проверяем баланс USDC
                     const usdcContract = new ethers.Contract(
                         USDC,
                         [
@@ -585,21 +539,58 @@
                         return;
                     }
 
-                    // Send USDC payment
-                    const txHash = await sendUSDC();
+                    // Формируем EIP-712 сообщение
+                    const domain = requirements.domain || {
+                        name: "USD Coin",
+                        version: "2",
+                        chainId: 8453,
+                        verifyingContract: USDC
+                    };
 
-                    // Retry with tx_hash
+                    const types = {
+                        Payment: [
+                            { name: 'from', type: 'address' },
+                            { name: 'to', type: 'address' },
+                            { name: 'value', type: 'uint256' },
+                            { name: 'asset', type: 'address' },
+                            { name: 'nonce', type: 'uint256' },
+                            { name: 'deadline', type: 'uint256' },
+                            { name: 'resource', type: 'string' }
+                        ]
+                    };
+
+                    const accept = requirements.accepts[0];
+                    const message = {
+                        from: address,
+                        to: accept.payTo,
+                        value: accept.amount,
+                        asset: accept.asset,
+                        nonce: 0,
+                        deadline: Math.floor(Date.now() / 1000) + 300,
+                        resource: requirements.resource.url
+                    };
+
+                    // Подписываем через MetaMask
+                    const signature = await signer._signTypedData(domain, types, message);
+
+                    // Формируем payment payload
+                    const paymentPayload = {
+                        ...message,
+                        signature: signature
+                    };
+
+                    // Отправляем с подписью
                     response = await fetch(AGENT_URL, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            symbol: symbol,
-                            tx_hash: txHash
-                        })
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-payment': btoa(JSON.stringify(paymentPayload))
+                        },
+                        body: JSON.stringify({ symbol: symbol })
                     });
                 }
 
-                // 4. Process response
+                // 3. Обрабатываем ответ
                 if (response.status === 200) {
                     const data = await response.json();
                     displaySignal(data, symbol);
@@ -612,6 +603,7 @@
 
             } catch (error) {
                 showError('Error: ' + error.message);
+                console.error(error);
             } finally {
                 isProcessing = false;
                 getSignalBtn.disabled = false;
@@ -620,39 +612,13 @@
         }
 
         // ============================================================
-        // PAYMENT: Send USDC
-        // ============================================================
-        async function sendUSDC() {
-            const usdcContract = new ethers.Contract(
-                USDC,
-                [
-                    'function transfer(address to, uint256 amount) returns (bool)',
-                    'function decimals() view returns (uint8)'
-                ],
-                signer
-            );
-
-            const decimals = await usdcContract.decimals();
-            const amount = ethers.utils.parseUnits(PRICE, decimals);
-
-            const tx = await usdcContract.transfer(PAYTO, amount);
-            await tx.wait();
-
-            return tx.hash;
-        }
-
-        // ============================================================
         // DISPLAY SIGNAL
         // ============================================================
         function displaySignal(data, symbol) {
             const content = data.message?.content || '';
 
-            // Extract values with regex
             const signalMatch = content.match(/RECOMMENDATION:\s*(LONG|SHORT|HOLD)/i);
             const status = signalMatch ? signalMatch[1] : 'HOLD';
-
-            const priceMatch = content.match(/Price:\s*\$?([\d,\.]+)/i);
-            const price = priceMatch ? priceMatch[1] : '—';
 
             const entryMatch = content.match(/ENTRY ZONE:\s*\$?([\d,\.]+)/i);
             const entry = entryMatch ? entryMatch[1] : '—';
@@ -672,7 +638,6 @@
             const changeMatch = content.match(/Change:\s*([+\-][\d\.]+)%/i);
             const change = changeMatch ? changeMatch[1] + '%' : '—';
 
-            // Update UI
             document.getElementById('signalSymbol').textContent = `${symbol}/USDT`;
 
             const statusEl = document.getElementById('signalStatus');
@@ -712,18 +677,15 @@
         // ============================================================
         window.addEventListener('load', () => {
             if (window.ethereum) {
-                // Check if already connected
                 window.ethereum.request({ method: 'eth_accounts' }).then(accounts => {
                     if (accounts.length > 0) connectWallet();
                 }).catch(() => {});
             }
         });
 
-        // Listen for account changes
         if (window.ethereum) {
             window.ethereum.on('accountsChanged', function(accounts) {
                 if (accounts.length === 0) {
-                    // Disconnected
                     walletStatusEl.textContent = '🔌 Connect Wallet';
                     walletStatusEl.classList.remove('connected');
                     signer = null;
