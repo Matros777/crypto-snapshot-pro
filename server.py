@@ -17,14 +17,8 @@ import os
 from typing import Optional, Any
 from dotenv import load_dotenv
 
-# ============================================================
-# LOAD ENVIRONMENT VARIABLES
-# ============================================================
 load_dotenv()
 
-# ============================================================
-# LOGGING
-# ============================================================
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -34,25 +28,19 @@ logger = logging.getLogger("crypto-snapshot")
 
 app = FastAPI(title="Crypto Snapshot Pro x402 Agent")
 
-# ============================================================
-# ASI AI SETTINGS
-# ============================================================
 ASI_API_KEY = os.getenv("ASI_API_KEY", "")
 ASI_MODELS = [
     {"id": "asi1", "name": "ASI1"},
     {"id": "asi1-mini", "name": "ASI1 Mini"}
 ]
 
-# ============================================================
-# PROFESSIONAL PROMPT FOR TRADER
-# ============================================================
 PROFESSIONAL_PROMPT = """
 You are a professional crypto trader with 20+ years of experience managing institutional portfolios.
 You provide conservative, data-driven trading advice with clear risk management.
 
 Based on the technical analysis below, provide a professional trading recommendation:
 
-### TECHNICAL DATA:
+TECHNICAL DATA:
 Symbol: {symbol}
 Current Price: ${price}
 24h Change: {change}%
@@ -73,59 +61,25 @@ Resistance: ${resistance}
 Long Score: {long_score}
 Short Score: {short_score}
 
-### YOUR ANALYSIS MUST INCLUDE:
+YOUR ANALYSIS MUST INCLUDE:
+1. MARKET ASSESSMENT (2-3 sentences)
+2. TRADE RECOMMENDATION: LONG / SHORT / HOLD
+3. PRICE PREDICTION 24H with percentage
+4. ENTRY ZONE
+5. TARGET LEVELS T1 and T2
+6. STOP LOSS with rationale
+7. RISK ASSESSMENT Low/Medium/High
+8. CONFIDENCE LEVEL percentage
+9. KEY LEVELS TO WATCH
+10. FINAL RECOMMENDATION one clear sentence
 
-1. **MARKET ASSESSMENT** (2-3 sentences on current market context)
-2. **TRADE RECOMMENDATION**: Clearly state: **LONG** / **SHORT** / **HOLD**
-3. **PRICE PREDICTION 24H**: Where do you see price in 24 hours? (with percentage)
-4. **ENTRY ZONE**: Specific price or range to enter
-5. **TARGET LEVELS**: T1 (conservative), T2 (optimistic)
-6. **STOP LOSS**: Specific price with rationale
-7. **RISK ASSESSMENT**: Low/Medium/High with explanation
-8. **CONFIDENCE LEVEL**: Percentage (0-100%)
-9. **KEY LEVELS TO WATCH**: Critical support/resistance
-10. **FINAL RECOMMENDATION**: One clear sentence summarizing action
-
-### FORMAT EXAMPLE:
-
-📊 MARKET ASSESSMENT:
-[2-3 sentences]
-
-🎯 RECOMMENDATION: LONG/SHORT/HOLD
-[Clear reason]
-
-📈 24H PRICE PREDICTION:
-[Direction and percentage]
-
-📍 ENTRY ZONE: $X.XX - $X.XX
-🎯 TARGET 1: $X.XX (+X%)
-🎯 TARGET 2: $X.XX (+X%)
-🛑 STOP LOSS: $X.XX (-X%)
-
-⚠️ RISK: Low/Medium/High
-[Explanation]
-
-🎯 CONFIDENCE: X%
-
-📌 KEY LEVELS:
-  Support: $X.XX
-  Resistance: $X.XX
-
-💡 FINAL RECOMMENDATION:
-[One clear actionable sentence]
-
-
-### IMPORTANT RULES:
-- Be CONSERVATIVE - prioritize capital preservation
+IMPORTANT RULES:
+- Be CONSERVATIVE
 - If indicators are mixed, recommend HOLD
 - Always include specific price levels
-- Be honest about uncertainty
 - Professional tone, no hype
 """
 
-# ============================================================
-# FALLBACK ANALYSIS (professional rules)
-# ============================================================
 def generate_fallback_analysis(signal_data: dict) -> str:
     signal = signal_data.get('signal', 'HOLD')
     rsi = signal_data.get('rsi', 50)
@@ -214,9 +168,6 @@ def generate_fallback_analysis(signal_data: dict) -> str:
 
     return "\n".join(lines)
 
-# ============================================================
-# AI ANALYSIS VIA ASI API
-# ============================================================
 async def generate_ai_analysis(symbol: str, signal_data: dict) -> str:
     prompt = PROFESSIONAL_PROMPT.format(
         symbol=symbol.replace('USDT', '/USDT'),
@@ -243,10 +194,10 @@ async def generate_ai_analysis(symbol: str, signal_data: dict) -> str:
     for model in ASI_MODELS:
         try:
             if not ASI_API_KEY:
-                logger.warning("⚠️ No ASI API key, using fallback")
+                logger.warning("No ASI API key, using fallback")
                 return generate_fallback_analysis(signal_data)
 
-            logger.info(f"🤖 Trying ASI model: {model['name']}")
+            logger.info(f"Trying ASI model: {model['name']}")
 
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
@@ -276,22 +227,19 @@ async def generate_ai_analysis(symbol: str, signal_data: dict) -> str:
                 if response.status_code == 200:
                     data = response.json()
                     ai_analysis = data["choices"][0]["message"]["content"]
-                    logger.info(f"✅ AI analysis generated via {model['name']}")
+                    logger.info(f"AI analysis generated via {model['name']}")
                     return ai_analysis
                 else:
-                    logger.warning(f"⚠️ ASI {model['name']} error: {response.status_code}")
+                    logger.warning(f"ASI {model['name']} error: {response.status_code}")
                     continue
 
         except Exception as e:
-            logger.error(f"❌ ASI {model.get('name', 'unknown')} error: {e}")
+            logger.error(f"ASI {model.get('name', 'unknown')} error: {e}")
             continue
 
-    logger.info("🔄 All ASI models failed, using fallback analysis")
+    logger.info("All ASI models failed, using fallback analysis")
     return generate_fallback_analysis(signal_data)
 
-# ============================================================
-# RPC FOR TX VERIFICATION
-# ============================================================
 ALCHEMY_URL = os.getenv("ALCHEMY_URL", "https://base-mainnet.g.alchemy.com/v2/U8khpdvO0rAwu9ojyBOpr")
 USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 PAYTO_ADDRESS = "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3"
@@ -332,20 +280,17 @@ async def verify_tx_payment(tx_hash: str) -> bool:
                         to_address = "0x" + topics[2][-40:]
                         if to_address.lower() == PAYTO_ADDRESS.lower():
                             paid_tx_cache[tx_hash] = True
-                            logger.info(f"✅ Payment verified for tx: {tx_hash}")
+                            logger.info(f"Payment verified for tx: {tx_hash}")
                             return True
 
             paid_tx_cache[tx_hash] = False
             return False
 
     except Exception as e:
-        logger.error(f"❌ TX verification error: {e}")
+        logger.error(f"TX verification error: {e}")
         paid_tx_cache[tx_hash] = False
         return False
 
-# ============================================================
-# PROXY SETTINGS
-# ============================================================
 USE_PROXY = os.getenv("PROXY_ENABLED", "false").lower() == "true"
 PROXY_HOST = os.getenv("PROXY_HOST", "152.232.68.111")
 PROXY_PORT = os.getenv("PROXY_PORT", "9920")
@@ -354,14 +299,11 @@ PROXY_PASS = os.getenv("PROXY_PASS", "gZNo5z")
 
 if USE_PROXY:
     PROXY_URL = f"socks5://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
-    logger.info(f"🔗 Proxy enabled: {PROXY_HOST}:{PROXY_PORT}")
+    logger.info(f"Proxy enabled: {PROXY_HOST}:{PROXY_PORT}")
 else:
     PROXY_URL = None
-    logger.info("🔗 Proxy disabled")
+    logger.info("Proxy disabled")
 
-# ============================================================
-# DATA SOURCE - Binance
-# ============================================================
 BINANCE_API = "https://api.binance.com/api/v3"
 _cache = {}
 _CACHE_TTL = 60
@@ -371,19 +313,16 @@ MIN_AMOUNT = 25000
 class AgentResponse(BaseModel):
     message: dict
 
-# ============================================================
-# FACILITATOR VERIFICATION
-# ============================================================
 FACILITATOR_URL = "https://facilitator.openx402.ai"
 
 async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
-    logger.info("🔍 Starting facilitator verification...")
+    logger.info("Starting facilitator verification...")
 
     try:
         payment_data = json.loads(base64.b64decode(payment_payload).decode('utf-8'))
-        logger.info("✅ Payment payload decoded successfully")
+        logger.info("Payment payload decoded successfully")
     except Exception as e:
-        logger.error(f"❌ Failed to decode payment payload: {e}")
+        logger.error(f"Failed to decode payment payload: {e}")
         return False
 
     requirements = PAYMENT_CONFIG["accepts"][0]
@@ -403,15 +342,15 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
             logger.info(f"VERIFY RESPONSE: {verify_response.text}")
 
             if verify_response.status_code != 200:
-                logger.warning(f"⚠️ Verification failed: {verify_response.status_code}")
+                logger.warning(f"Verification failed: {verify_response.status_code}")
                 return False
 
             verify_data = verify_response.json()
             if not verify_data.get("isValid", False):
-                logger.warning(f"⚠️ Invalid signature: {verify_data}")
+                logger.warning(f"Invalid signature: {verify_data}")
                 return False
 
-            logger.info("✅ Signature verified by facilitator")
+            logger.info("Signature verified by facilitator")
 
             settle_response = await client.post(
                 f"{FACILITATOR_URL}/settle",
@@ -426,19 +365,16 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
             logger.info(f"SETTLE RESPONSE: {settle_response.text}")
 
             if settle_response.status_code != 200:
-                logger.warning(f"⚠️ Settle failed: {settle_response.status_code}")
+                logger.warning(f"Settle failed: {settle_response.status_code}")
                 return False
 
-            logger.info("✅ Payment verified and settled by facilitator")
+            logger.info("Payment verified and settled by facilitator")
             return True
 
     except Exception as e:
-        logger.error(f"❌ Facilitator error: {e}")
+        logger.error(f"Facilitator error: {e}")
         return False
 
-# ============================================================
-# x402 PAYMENT CONFIGURATION
-# ============================================================
 PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
@@ -474,7 +410,7 @@ PAYMENT_CONFIG = {
                     "example": {
                         "message": {
                             "role": "assistant",
-                            "content": "📊 CRYPTO SNAPSHOT PRO - BTC/USDT..."
+                            "content": "CRYPTO SNAPSHOT PRO - BTC/USDT..."
                         }
                     }
                 }
@@ -490,7 +426,7 @@ PAYMENT_CONFIG = {
 def create_402_response():
     envelope = json.dumps(PAYMENT_CONFIG, separators=(',', ':'))
     encoded = base64.b64encode(envelope.encode("utf-8")).decode("utf-8")
-    logger.info("🔐 402 Payment Required sent")
+    logger.info("402 Payment Required sent")
     return Response(
         content="Payment Required",
         status_code=402,
@@ -500,9 +436,6 @@ def create_402_response():
         }
     )
 
-# ============================================================
-# BINANCE API
-# ============================================================
 async def fetch_binance(endpoint: str, params: dict = None) -> dict:
     cache_key = f"{endpoint}_{str(params)}"
     now = time.time()
@@ -512,7 +445,7 @@ async def fetch_binance(endpoint: str, params: dict = None) -> dict:
 
     try:
         if USE_PROXY and PROXY_URL:
-            logger.info(f"🔄 Using proxy: {PROXY_HOST}:{PROXY_PORT}")
+            logger.info(f"Using proxy: {PROXY_HOST}:{PROXY_PORT}")
             async with httpx.AsyncClient(
                 timeout=15.0,
                 proxy=PROXY_URL
@@ -529,7 +462,7 @@ async def fetch_binance(endpoint: str, params: dict = None) -> dict:
                 )
 
         if response.status_code != 200:
-            logger.error(f"❌ Binance error: {response.status_code}")
+            logger.error(f"Binance error: {response.status_code}")
             raise HTTPException(status_code=503, detail="Market data unavailable")
 
         data = response.json()
@@ -537,8 +470,8 @@ async def fetch_binance(endpoint: str, params: dict = None) -> dict:
         return data
 
     except httpx.ProxyError as e:
-        logger.error(f"❌ Proxy error: {e}")
-        logger.info("🔄 Retrying without proxy...")
+        logger.error(f"Proxy error: {e}")
+        logger.info("Retrying without proxy...")
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
                 f"{BINANCE_API}/{endpoint}",
@@ -551,7 +484,7 @@ async def fetch_binance(endpoint: str, params: dict = None) -> dict:
             raise HTTPException(status_code=503, detail="Market data unavailable")
 
     except Exception as e:
-        logger.error(f"❌ Request error: {e}")
+        logger.error(f"Request error: {e}")
         raise HTTPException(status_code=503, detail="Market data unavailable")
 
 async def fetch_ticker(symbol: str) -> dict:
@@ -577,13 +510,13 @@ async def fetch_ticker(symbol: str) -> dict:
         }
 
         _cache[cache_key] = {"data": result, "time": now}
-        logger.info(f"✅ {symbol} price: ${price}, change: {result['change']:.2f}%")
+        logger.info(f"{symbol} price: ${price}, change: {result['change']:.2f}%")
         return result
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Binance error: {e}")
+        logger.error(f"Binance error: {e}")
         raise HTTPException(status_code=503, detail="Market data unavailable")
 
 async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> list[dict]:
@@ -618,12 +551,9 @@ async def fetch_klines(symbol: str, interval: str = "1d", limit: int = 50) -> li
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Binance klines error: {e}")
+        logger.error(f"Binance klines error: {e}")
         raise HTTPException(status_code=503, detail="Historical data unavailable")
 
-# ============================================================
-# TECHNICAL FUNCTIONS
-# ============================================================
 def calculate_rsi(closes: list[float], period: int = 14) -> float:
     if len(closes) < period + 1:
         return 50.0
@@ -767,9 +697,6 @@ def format_price(price: float) -> str:
         return f"${price:.4f}"
     return f"${price:.6f}"
 
-# ============================================================
-# PAYABLE ENDPOINT
-# ============================================================
 @app.post("/payable")
 async def payable_endpoint(request: Request):
     payment_header = (
@@ -788,9 +715,6 @@ async def payable_endpoint(request: Request):
 
     return {"status": "ok", "message": "Payment verified"}
 
-# ============================================================
-# MAIN ENDPOINT
-# ============================================================
 @app.api_route("/", methods=["GET", "POST"])
 async def crypto_snapshot(request: Request):
     symbol = None
@@ -821,7 +745,6 @@ async def crypto_snapshot(request: Request):
             "content": "📊 CRYPTO SNAPSHOT PRO\n\nSend a symbol to analyze.\n\nExamples:\n• BTC\n• ETH\n• SOL\n• DOGE\n• XRP\n\nUsage: POST {\"symbol\": \"BTC\"} or GET ?symbol=BTC"
         })
 
-    # PAYMENT VERIFICATION
     if tx_hash:
         logger.info(f"🔍 Verifying tx: {tx_hash}")
         if not await verify_tx_payment(tx_hash):
@@ -846,7 +769,6 @@ async def crypto_snapshot(request: Request):
                 status_code=402
             )
 
-    # GENERATE SIGNAL
     try:
         symbol = symbol.upper()
         symbol = symbol.replace("USDT", "").replace("USD", "").replace("NODE", "")
@@ -992,12 +914,9 @@ async def crypto_snapshot(request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Error: {e}")
+        logger.error(f"Error: {e}")
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
-# ============================================================
-# WEB INTERFACE
-# ============================================================
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/app")
@@ -1031,6 +950,3 @@ async def root():
             "/health": "Health check (GET)",
         }
     }
-**Босс, вот полный код!** 🫡
-
-**Важно:** В конце кода УБРАНЫ комментарии с эмодзи вне строк. Теперь все эмодзи ТОЛЬКО внутри строк `f"""` и `"""`. Ошибок синтаксиса не будет! 🚀
