@@ -257,6 +257,21 @@
             display: none;
         }
         .error.show { display: block; }
+        .success {
+            color: #00d4ff;
+            background: rgba(0,212,255,0.1);
+            padding: 12px;
+            border-radius: 10px;
+            margin-top: 12px;
+            display: none;
+        }
+        .success.show { display: block; }
+        .tx-link {
+            color: #00d4ff;
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 12px;
+        }
         @media (max-width: 600px) {
             .container { padding: 20px; }
             .header { flex-direction: column; align-items: stretch; }
@@ -316,6 +331,7 @@
         </div>
 
         <div id="errorMessage" class="error"></div>
+        <div id="successMessage" class="success"></div>
 
         <div class="signal-box" id="signalBox">
             <div class="signal-header">
@@ -387,6 +403,7 @@
         const getSignalBtn = document.getElementById('getSignalBtn');
         const signalBox = document.getElementById('signalBox');
         const errorMessage = document.getElementById('errorMessage');
+        const successMessage = document.getElementById('successMessage');
         const customSymbolInput = document.getElementById('customSymbol');
 
         // ============================================================
@@ -477,7 +494,7 @@
         });
 
         // ============================================================
-        // GET SIGNAL — x402 через MetaMask (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+        // GET SIGNAL — ПРЯМАЯ ОПЛАТА USDC
         // ============================================================
         async function getSignal() {
             if (isProcessing) return;
@@ -494,8 +511,15 @@
                 return;
             }
 
-            // Проверяем баланс USDC
+            hideError();
+            hideSuccess();
+            isProcessing = true;
+            getSignalBtn.disabled = true;
+            getSignalBtn.innerHTML = '<span class="loading"></span> Processing...';
+            signalBox.classList.remove('show');
+
             try {
+                // 1. Проверяем баланс USDC
                 const usdcContract = new ethers.Contract(
                     USDC,
                     [
@@ -510,103 +534,38 @@
 
                 if (parseFloat(formatted) < 0.025) {
                     showError(`Insufficient USDC balance. You have ${formatted} USDC, need 0.025 USDC.`);
+                    isProcessing = false;
+                    getSignalBtn.disabled = false;
+                    getSignalBtn.innerHTML = '🚀 Get Signal';
                     return;
                 }
-            } catch (e) {
-                showError('Failed to check USDC balance: ' + e.message);
-                return;
-            }
 
-            hideError();
-            isProcessing = true;
-            getSignalBtn.disabled = true;
-            getSignalBtn.innerHTML = '<span class="loading"></span> Processing...';
-            signalBox.classList.remove('show');
+                // 2. Отправляем USDC
+                const amount = ethers.utils.parseUnits(PRICE, decimals);
+                const tx = await usdcContract.transfer(PAYTO, amount);
+                
+                showSuccess(`⏳ Waiting for transaction confirmation...`);
+                getSignalBtn.innerHTML = '<span class="loading"></span> Waiting for confirmation...';
 
-            try {
-                // 1. Первый запрос — получаем 402
-                let response = await fetch(AGENT_URL, {
+                await tx.wait();
+
+                // 3. Получаем сигнал с tx_hash
+                const response = await fetch(AGENT_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ symbol: symbol })
+                    body: JSON.stringify({
+                        symbol: symbol,
+                        tx_hash: tx.hash
+                    })
                 });
 
-                // 2. Если 402 — подписываем через MetaMask
-                if (response.status === 402) {
-                    const paymentHeader = response.headers.get('payment-required');
-                    if (!paymentHeader) {
-                        throw new Error('No payment-required header');
-                    }
-
-                    // Парсим требования
-                    const requirements = JSON.parse(atob(paymentHeader));
-                    const accept = requirements.accepts[0];
-
-                    // Формируем EIP-712 сообщение
-                    const domain = {
-                        name: "USD Coin",
-                        version: "2",
-                        chainId: 8453,
-                        verifyingContract: USDC
-                    };
-
-                    const types = {
-                        Payment: [
-                            { name: 'from', type: 'address' },
-                            { name: 'to', type: 'address' },
-                            { name: 'value', type: 'uint256' },
-                            { name: 'asset', type: 'address' },
-                            { name: 'nonce', type: 'uint256' },
-                            { name: 'deadline', type: 'uint256' },
-                            { name: 'resource', type: 'string' }
-                        ]
-                    };
-
-                    const message = {
-                        from: address,
-                        to: accept.payTo,
-                        value: accept.amount,
-                        asset: accept.asset,
-                        nonce: 0,
-                        deadline: Math.floor(Date.now() / 1000) + 300,
-                        resource: requirements.resource.url
-                    };
-
-                    // Подписываем через MetaMask
-                    const signature = await signer._signTypedData(domain, types, message);
-
-                    // ✅ ПРАВИЛЬНАЯ СТРУКТУРА — как в терминале
-                    const paymentPayload = {
-                        payload: message,
-                        signature: signature
-                    };
-
-                    const encodedPayload = btoa(JSON.stringify(paymentPayload));
-
-                    // Отправляем с подписью
-                    response = await fetch(AGENT_URL, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'x-payment': encodedPayload
-                        },
-                        body: JSON.stringify({ symbol: symbol })
-                    });
-                }
-
-                // 3. Обрабатываем ответ
+                // 4. Обрабатываем ответ
                 if (response.status === 200) {
                     const data = await response.json();
                     displaySignal(data, symbol);
-                } else if (response.status === 402) {
-                    showError('Payment required. Please ensure you have 0.025 USDC on Base network.');
+                    hideSuccess();
                 } else {
-                    try {
-                        const error = await response.json();
-                        showError(error.detail || 'Failed to get signal.');
-                    } catch {
-                        showError('Failed to get signal: ' + response.status);
-                    }
+                    showError('Payment successful but failed to get signal. Please try again.');
                 }
 
             } catch (error) {
@@ -674,10 +633,21 @@
         function showError(msg) {
             errorMessage.textContent = msg;
             errorMessage.classList.add('show');
+            successMessage.classList.remove('show');
         }
 
         function hideError() {
             errorMessage.classList.remove('show');
+        }
+
+        function showSuccess(msg) {
+            successMessage.textContent = msg;
+            successMessage.classList.add('show');
+            errorMessage.classList.remove('show');
+        }
+
+        function hideSuccess() {
+            successMessage.classList.remove('show');
         }
 
         // ============================================================
