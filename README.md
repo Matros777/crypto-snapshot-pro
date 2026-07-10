@@ -1,3 +1,4 @@
+```markdown
 # Crypto Snapshot Pro — A2A Endpoint for OKX.AI
 
 **Agent ID:** #3613
@@ -12,14 +13,14 @@ Crypto Snapshot Pro is a real-time cryptocurrency technical analysis microservic
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/crypto-snapshot-pro.git
+git clone https://github.com/Matros777/crypto-snapshot-pro.git
 cd crypto-snapshot-pro
 
 # Install dependencies
 pip install -r requirements.txt
 
 # Run the server
-uvicorn server:app --host 0.0.0.0 --port 8001 --reload
+uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
 ### Test the API
@@ -39,6 +40,7 @@ curl -X POST http://localhost:8001 \
 | `POST` | `/` | Get crypto snapshot for a symbol |
 | `GET` | `/health` | Health check |
 | `GET` | `/` | Service info |
+| `GET` | `/app` | Web interface |
 
 ---
 
@@ -77,6 +79,40 @@ Supported symbols: `BTC`, `ETH`, `SOL`, `DOGE`, `XRP`, `ADA`, `AVAX`, `DOT`, `NE
 - Volume Anomaly
 - Volatility (High-Low Range)
 - Price vs EMA
+- Bollinger Bands
+- MACD
+- RSI Divergence
+- Pivot Points
+
+---
+
+## 💳 Payment
+
+Send exactly **0.025 USDC** on **Base network** to:
+
+```
+0x5b7efd37546d6BB02463339cEaDdD80997aC97B3
+```
+
+### Via x402 Protocol
+
+```bash
+# Install x402 client
+npm install -g awal
+
+# Get signal with automatic payment
+awal x402 pay https://crypto-snapshot-pro.onrender.com/ \
+  --method POST \
+  --data '{"symbol":"ETH"}'
+```
+
+### Via Web Interface
+
+1. Open: https://crypto-snapshot-pro.onrender.com/app
+2. Connect your wallet
+3. Select symbol
+4. Pay 0.025 USDC
+5. Get instant AI analysis
 
 ---
 
@@ -88,7 +124,29 @@ Supported symbols: `BTC`, `ETH`, `SOL`, `DOGE`, `XRP`, `ADA`, `AVAX`, `DOT`, `NE
 2. Connect your GitHub repository
 3. Use the following settings:
    - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** `uvicorn server:app --host 0.0.0.0 --port 10000`
+   - **Start Command:** `uvicorn main:app --host 0.0.0.0 --port 10000`
+4. Add environment variables:
+   - `ASI_API_KEY=your-asi-api-key`
+   - `ASI_MODEL=asi1`
+   - `PROXY_ENABLED=false`
+
+---
+
+## 🛠️ Tech Stack
+
+- **Backend:** FastAPI, Python
+- **Payments:** x402 Protocol, USDC on Base
+- **AI Analysis:** ASI1 API
+- **Market Data:** Binance Public API
+- **Frontend:** HTML, CSS, JavaScript, ethers.js
+
+---
+
+## 📊 Supported Symbols
+
+BTC, ETH, BNB, XRP, SOL, DOGE, ADA, AVAX, DOT, MATIC, SHIB, LTC, UNI, LINK, ATOM, ETC, XLM, BCH, VET, FIL, ICP, HBAR, APT, ARB, NEAR, MKR, PEPE, AAVE, WIF, OP, INJ, JASMY, FLOKI, FET, THETA, MNT, RNDR, SEI, ALGO, FLOW, ENA, GALA, BEAM, GRT, EOS, QNT, KCS, BGB, XDC, IMX
+
+**+ all other Binance USDT pairs (500+ total)**
 
 ---
 
@@ -106,6 +164,19 @@ MIT
 
 ## 🔗 Links
 
-- [OKX.AI Agent Profile](https://okx.ai/agents)
-- [GitHub Repository](https://github.com/your-username/crypto-snapshot-pro)
-- [Render Deployment](https://render.com)
+- **Web Interface:** https://crypto-snapshot-pro.onrender.com/app
+- **API Endpoint:** https://crypto-snapshot-pro.onrender.com/
+- **OpenX402:** https://openx402.ai/projects/0x5b7efd37546d6bb02463339ceaddd80997ac97b3
+- **Full Guide:** https://gist.github.com/Matros777/c5d95532248eaaf2b86fd04f8a2753b7
+- **GitHub Repository:** https://github.com/Matros777/crypto-snapshot-pro
+
+---
+
+## 📧 Support
+
+- **Twitter:** https://x.com/your_handle
+- **GitHub Issues:** https://github.com/Matros777/crypto-snapshot-pro/issues
+
+---
+
+**Built with ❤️ by Matros777** | [OKX.AI Agent #3613](https://okx.ai/agents)
