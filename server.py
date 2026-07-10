@@ -931,22 +931,36 @@ async def web_app():
 async def health_check():
     return {"status": "ok", "service": "crypto-snapshot-pro", "proxy_enabled": USE_PROXY}
 
+# ============================================================
+# ГЛАВНАЯ СТРАНИЦА ДЛЯ ЯНДЕКСА И ПЕРЕНАПРАВЛЕНИЯ
+# ============================================================
 @app.get("/")
-async def root():
-    return {
-        "service": "Crypto Snapshot Pro x402 Agent",
-        "agentId": "3613",
-        "version": "4.0.0",
-        "data_source": "Binance Public API",
-        "proxy_enabled": USE_PROXY,
-        "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "8-Factor Scoring"],
-        "x402": True,
-        "settle": "OpenFacilitator",
-        "web_interface": "/app",
-        "endpoints": {
-            "/": "Main endpoint (POST/GET)",
-            "/app": "Web interface (GET)",
-            "/payable": "x402 verification endpoint (POST)",
-            "/health": "Health check (GET)",
-        }
-    }
+async def root(request: Request):
+    # Проверяем User-Agent для Яндекс бота
+    user_agent = request.headers.get("user-agent", "").lower()
+    
+    # Если это Яндекс бот — отдаем HTML с верификацией
+    if "yandex" in user_agent or "yandexbot" in user_agent:
+        return HTMLResponse("""
+        <html>
+            <head>
+                <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+                <meta name="yandex-verification" content="d100e212bdd18c7b" />
+            </head>
+            <body>Verification: d100e212bdd18c7b</body>
+        </html>
+        """)
+    
+    # Для обычных пользователей — редирект на /app
+    return HTMLResponse("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta http-equiv="refresh" content="0; url=/app" />
+        <title>Crypto Snapshot Pro</title>
+    </head>
+    <body>
+        <a href="/app">Crypto Snapshot Pro</a>
+    </body>
+    </html>
+    """)
