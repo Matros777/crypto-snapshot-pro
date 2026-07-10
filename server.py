@@ -935,6 +935,15 @@ async def health_check():
     return {"status": "ok", "service": "crypto-snapshot-pro", "proxy_enabled": USE_PROXY}
 
 # ============================================================
+# ГЛАВНАЯ СТРАНИЦА — РЕДИРЕКТ НА /app (ДОЛЖЕН БЫТЬ ПЕРВЫМ!)
+# ============================================================
+from fastapi.responses import RedirectResponse
+
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/app")
+
+# ============================================================
 # ЯНДЕКС ФАЙЛ ДЛЯ ВЕРИФИКАЦИИ
 # ============================================================
 @app.get("/yandex_d100e212bdd18c7b.html")
@@ -947,10 +956,3 @@ async def yandex_verify():
         <body>Verification: d100e212bdd18c7b</body>
     </html>
     """)
-
-# ============================================================
-# ГЛАВНАЯ СТРАНИЦА — РЕДИРЕКТ НА /app
-# ============================================================
-@app.get("/")
-async def root():
-    return RedirectResponse(url="/app")
