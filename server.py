@@ -935,7 +935,7 @@ async def health_check():
     return {"status": "ok", "service": "crypto-snapshot-pro", "proxy_enabled": USE_PROXY}
 
 # ============================================================
-# ЯНДЕКС ФАЙЛ ДЛЯ ВЕРИФИКАЦИИ
+# ЯНДЕКС ФАЙЛ ДЛЯ ВЕРИФИКАЦИИ (ДОБАВИТЬ ЭТОТ БЛОК!)
 # ============================================================
 @app.get("/yandex_d100e212bdd18c7b.html")
 async def yandex_verify():
@@ -949,11 +949,21 @@ async def yandex_verify():
     """)
 
 # ============================================================
-# ГЛАВНАЯ СТРАНИЦА — РЕДИРЕКТ НА /app
+# ГЛАВНАЯ СТРАНИЦА — ДЛЯ ЯНДЕКСА
 # ============================================================
-from fastapi.responses import RedirectResponse
-
 @app.get("/")
 async def root():
-    # Яндекс бот видит метатег и файл, пользователи редиректятся
-    return RedirectResponse(url="/app")
+    return HTMLResponse("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta name="yandex-verification" content="d100e212bdd18c7b" />
+        <meta name="google-site-verification" content="LNTC7t6OrMfNa9kA3Z781_R7ytdc40_i0cv5n20dOWk" />
+        <meta http-equiv="refresh" content="0; url=/app" />
+        <title>Crypto Snapshot Pro</title>
+    </head>
+    <body>
+        <a href="/app">Crypto Snapshot Pro</a>
+    </body>
+    </html>
+    """)
