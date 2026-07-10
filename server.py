@@ -624,7 +624,7 @@ async def crypto_snapshot(request: Request):
 ║  🎯 SIGNAL                                                    ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║  {signal_desc} ║
-║  Conviction: {conviction:<10}  |  Score: {long_score:.1f} LONG / {short_score:.1f} SHORT    ║
+║  Conviction: {conviction:<10}  |  Score: {long_score:.1f}🟢LONG / {short_score:.1f}🔴SHORT    ║
 ║  Reason: {'Bullish factors dominate.' if long_score > short_score else 'Bearish factors dominate.' if short_score > long_score else 'Mixed signals. Wait for confirmation.'} ║
 ╚══════════════════════════════════════════════════════════════════╝
 
