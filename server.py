@@ -715,22 +715,25 @@ PAYMENT_CONFIG = {
 # X402 ОТВЕТ — ПРАВИЛЬНЫЙ!
 # ============================================================
 
-def create_402_response():
-    encoded = base64.b64encode(
-        json.dumps(PAYMENT_CONFIG).encode("utf-8")
-    ).decode("utf-8")
-
-    logger.info("402 Payment Required sent")
-
+@app.get("/")
+async def root():
+    # GET — возвращаем чистый JSON (для details)
     return Response(
         status_code=402,
-        headers={
-            "payment-required": encoded,
-            "Access-Control-Expose-Headers": "payment-required"
-        },
-        content="Payment Required",
-        media_type="text/plain"
+        headers={"payment-required": encoded},
+        content=json.dumps(PAYMENT_CONFIG)
     )
+
+@app.post("/")
+async def crypto_snapshot(request: Request):
+    # POST — возвращаем обёртку (для pay)
+    if not payment_header:
+        return Response(
+            status_code=402,
+            headers={"payment-required": encoded},
+            content=json.dumps({"paymentRequirements": encoded})
+        )
+    # ... остальная логика
 
 # ============================================================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
