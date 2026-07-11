@@ -302,7 +302,7 @@ async def root():
         return HTMLResponse("<h1>Web interface not found</h1>", status_code=404)
 
 # ============================================================
-# X402 ЭНДПОИНТ ДЛЯ ОПЛАТЫ (ОСНОВНАЯ ССЫЛКА) — ИСПРАВЛЕН
+# X402 ЭНДПОИНТ — ИСПРАВЛЕН (ТЕЛО = base64)
 # ============================================================
 
 def create_402_response():
@@ -345,7 +345,7 @@ def create_402_response():
             "payment-required": encoded,
             "Content-Type": "application/json"
         },
-        content=json.dumps(payment_requirements)
+        content=encoded  # ← ТОЛЬКО BASE64, БЕЗ JSON-ОБЁРТКИ!
     )
 
 @app.post("/")
