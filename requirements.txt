@@ -6,4 +6,4 @@ eth-account==0.11.0
 httpx[socks]
 python-multipart
 python-dotenv
-mcp
+fastmcp
