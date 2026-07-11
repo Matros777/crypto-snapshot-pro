@@ -289,13 +289,13 @@ app.mount("/mcp", mcp_app)
 logger.info("✅ MCP server mounted at /mcp")
 
 # ============================================================
-# ГЛАВНАЯ СТРАНИЦА — ОТДАЁТ X402 JSON ДЛЯ GET!
+# ГЛАВНАЯ СТРАНИЦА — РЕДИРЕКТ НА /app (ДЛЯ БРАУЗЕРА)
 # ============================================================
 
 @app.get("/")
-async def root(request: Request):
-    """GET запрос на корень — отдаёт чистый x402 JSON."""
-    return create_402_response()
+async def root():
+    """GET запрос на корень — редирект на веб-интерфейс."""
+    return RedirectResponse(url="/app")
 
 # ============================================================
 # ЯНДЕКС ВЕРИФИКАЦИЯ
@@ -664,7 +664,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         return False
 
 # ============================================================
-# ПРАВИЛЬНЫЙ X402 PAYMENT_CONFIG (БЕЗ domain И extra!)
+# ПРАВИЛЬНЫЙ X402 PAYMENT_CONFIG
 # ============================================================
 
 PAYMENT_CONFIG = {
@@ -712,7 +712,7 @@ PAYMENT_CONFIG = {
 }
 
 # ============================================================
-# X402 ОТВЕТ — ЧИСТЫЙ JSON ДЛЯ GET И POST
+# X402 ОТВЕТ — ПРАВИЛЬНЫЙ!
 # ============================================================
 
 def create_402_response():
@@ -721,14 +721,14 @@ def create_402_response():
         json.dumps(PAYMENT_CONFIG).encode()
     ).decode()
 
-    # Для GET и POST возвращаем чистый JSON
+    # Для POST возвращаем {"paymentRequirements": "..."}
     return Response(
         status_code=402,
         headers={
             "payment-required": encoded,
             "Content-Type": "application/json"
         },
-        content=json.dumps(PAYMENT_CONFIG)  # ← ЧИСТЫЙ JSON, НЕ {"paymentRequirements": "..."}!
+        content=json.dumps({"paymentRequirements": encoded})
     )
 
 # ============================================================
@@ -1015,7 +1015,7 @@ async def payable_endpoint(request: Request):
     return {"status": "ok", "message": "Payment verified"}
 
 # ============================================================
-# ГЛАВНЫЙ API
+# ГЛАВНЫЙ API — ТОЛЬКО POST
 # ============================================================
 
 @app.post("/")
