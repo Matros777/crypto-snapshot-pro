@@ -49,34 +49,153 @@ from fastapi import FastAPI as _FastAPI
 # Создаем MCP под-приложение
 mcp_app = _FastAPI(title="MCP Server")
 
+@mcp_app.get("/")
+async def mcp_root_get():
+    """GET обработчик для проверки Agentic Market."""
+    return {
+        "name": "Crypto Snapshot Pro",
+        "version": "1.0.0",
+        "type": "mcp",
+        "protocol": "streamable-http",
+        "endpoint": "/mcp",
+        "tools": [
+            {
+                "name": "crypto_snapshot",
+                "description": "Get AI crypto analysis for any symbol",
+                "parameters": {
+                    "symbol": {
+                        "type": "string",
+                        "description": "Cryptocurrency symbol (BTC, ETH, SOL, etc.)"
+                    }
+                }
+            },
+            {
+                "name": "get_supported_pairs",
+                "description": "Get list of supported crypto pairs",
+                "parameters": {}
+            }
+        ],
+        "price": "0.025 USDC",
+        "network": "Base",
+        "pay_to": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3"
+    }
+
 @mcp_app.post("/")
 async def mcp_handler(request: Request):
-    """Обработчик MCP запросов."""
+    """Обработчик MCP запросов (JSON-RPC)."""
     try:
         body = await request.json()
         method = body.get("method", "")
         params = body.get("params", {})
         symbol = params.get("symbol", "BTC")
         
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                "https://crypto-snapshot-pro.onrender.com/",
-                json={"symbol": symbol}
-            )
+        # Обработка tools/list для Agentic Market
+        if method == "tools/list":
+            return {
+                "jsonrpc": "2.0",
+                "id": body.get("id"),
+                "result": {
+                    "tools": [
+                        {
+                            "name": "crypto_snapshot",
+                            "description": "Get AI crypto analysis for any symbol",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "symbol": {
+                                        "type": "string",
+                                        "description": "Cryptocurrency symbol (BTC, ETH, SOL, etc.)"
+                                    }
+                                },
+                                "required": ["symbol"]
+                            }
+                        },
+                        {
+                            "name": "get_supported_pairs",
+                            "description": "Get list of supported crypto pairs",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {}
+                            }
+                        }
+                    ]
+                }
+            }
+        
+        # Вызов инструмента crypto_snapshot
+        if method == "tools/call" and params.get("name") == "crypto_snapshot":
+            symbol = params.get("arguments", {}).get("symbol", "BTC")
             
-            if response.status_code == 200:
-                data = response.json()
-                return {
-                    "jsonrpc": "2.0",
-                    "id": body.get("id"),
-                    "result": data
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    "https://crypto-snapshot-pro.onrender.com/",
+                    json={"symbol": symbol}
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": body.get("id"),
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": data.get("message", {}).get("content", str(data))
+                                }
+                            ]
+                        }
+                    }
+                else:
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": body.get("id"),
+                        "error": {"code": response.status_code, "message": "Payment required"}
+                    }
+        
+        # Вызов инструмента get_supported_pairs
+        if method == "tools/call" and params.get("name") == "get_supported_pairs":
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.get("https://api.binance.com/api/v3/exchangeInfo")
+                    if response.status_code == 200:
+                        data = response.json()
+                        symbols = [s["symbol"] for s in data["symbols"] 
+                                  if s["quoteAsset"] == "USDT" and s["status"] == "TRADING"][:50]
+                        return {
+                            "jsonrpc": "2.0",
+                            "id": body.get("id"),
+                            "result": {
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": f"Supported pairs: {', '.join(symbols)}"
+                                    }
+                                ]
+                            }
+                        }
+            except:
+                pass
+            return {
+                "jsonrpc": "2.0",
+                "id": body.get("id"),
+                "result": {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "BTCUSDT, ETHUSDT, SOLUSDT, DOGEUSDT, XRPUSDT"
+                        }
+                    ]
                 }
-            else:
-                return {
-                    "jsonrpc": "2.0",
-                    "id": body.get("id"),
-                    "error": {"code": response.status_code, "message": "Payment required"}
-                }
+            }
+        
+        # Ошибка для неподдерживаемых методов
+        return {
+            "jsonrpc": "2.0",
+            "id": body.get("id"),
+            "error": {"code": -32601, "message": f"Method {method} not found"}
+        }
+        
     except Exception as e:
         return {
             "jsonrpc": "2.0",
@@ -101,6 +220,11 @@ async def mcp_info():
                 "name": "crypto_snapshot",
                 "description": "Get AI crypto analysis for any symbol",
                 "parameters": {"symbol": "string"}
+            },
+            {
+                "name": "get_supported_pairs",
+                "description": "Get list of supported crypto pairs",
+                "parameters": {}
             }
         ],
         "price": "0.025 USDC",
