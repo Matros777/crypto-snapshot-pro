@@ -33,6 +33,36 @@ logging.basicConfig(
 logger = logging.getLogger("crypto-snapshot")
 
 # ============================================================
+# ПРОВЕРКА ТОКЕНА AGENTIC MARKET
+# ============================================================
+
+AGENTIC_TOKEN = os.getenv("AGENTIC_TOKEN", "")
+
+def verify_agentic_token(request: Request) -> bool:
+    """Проверяет токен авторизации от Agentic Market."""
+    # Если токен не настроен - пропускаем (для разработки)
+    if not AGENTIC_TOKEN:
+        return True
+    
+    # Проверяем заголовок Authorization: Bearer <token>
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "").strip()
+    
+    # Проверяем альтернативный заголовок X-API-Key
+    x_api_key = request.headers.get("X-API-Key", "")
+    
+    # Проверяем специальный заголовок x-agentic-token
+    agentic_header = request.headers.get("x-agentic-token", "")
+    
+    # Проверяем заголовок X-Agentic-Token (с большой буквы)
+    agentic_header2 = request.headers.get("X-Agentic-Token", "")
+    
+    return (token == AGENTIC_TOKEN or 
+            x_api_key == AGENTIC_TOKEN or 
+            agentic_header == AGENTIC_TOKEN or
+            agentic_header2 == AGENTIC_TOKEN)
+
+# ============================================================
 # СОЗДАЕМ ГЛАВНОЕ ПРИЛОЖЕНИЕ
 # ============================================================
 
@@ -41,7 +71,7 @@ app = FastAPI(
 )
 
 # ============================================================
-# MCP СЕРВЕР — ПОЛНАЯ ПОДДЕРЖКА JSON-RPC
+# MCP СЕРВЕР — ПОЛНАЯ ПОДДЕРЖКА JSON-RPC С ПРОВЕРКОЙ ТОКЕНА
 # ============================================================
 
 from fastapi import FastAPI as _FastAPI
@@ -49,7 +79,21 @@ from fastapi import FastAPI as _FastAPI
 mcp_app = _FastAPI(title="MCP Server")
 
 @mcp_app.get("/")
-async def mcp_root():
+async def mcp_root(request: Request):
+    """GET обработчик с проверкой токена."""
+    # Проверяем токен (только если он настроен)
+    if AGENTIC_TOKEN and not verify_agentic_token(request):
+        return JSONResponse(
+            status_code=401,
+            content={
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32001,
+                    "message": "Unauthorized: Invalid AgenticMarket token"
+                }
+            }
+        )
+    
     return {
         "jsonrpc": "2.0",
         "result": {
@@ -82,6 +126,18 @@ async def mcp_root():
 
 @mcp_app.post("/")
 async def mcp_handler(request: Request):
+    """POST обработчик с проверкой токена."""
+    # Проверяем токен (только если он настроен)
+    if AGENTIC_TOKEN and not verify_agentic_token(request):
+        return {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": {
+                "code": -32001,
+                "message": "Unauthorized: Invalid AgenticMarket token"
+            }
+        }
+    
     try:
         body = await request.json()
         method = body.get("method", "")
@@ -239,7 +295,13 @@ async def mcp_handler(request: Request):
         }
 
 @mcp_app.get("/health")
-async def mcp_health():
+async def mcp_health(request: Request):
+    """Health check с проверкой токена."""
+    if AGENTIC_TOKEN and not verify_agentic_token(request):
+        return JSONResponse(
+            status_code=401,
+            content={"status": "unauthorized", "message": "Invalid token"}
+        )
     return {"status": "ok", "service": "MCP Server", "version": "1.0.0"}
 
 # МОНТИРУЕМ MCP
