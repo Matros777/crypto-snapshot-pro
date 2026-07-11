@@ -19,16 +19,81 @@ from typing import Optional, Any
 from dotenv import load_dotenv
 
 # ============================================================
-# MCP - ОПЦИОНАЛЬНО (не обязателен для работы)
+# MCP - ПРОСТОЙ ВСТРОЕННЫЙ СЕРВЕР (ВСЕГДА РАБОТАЕТ)
 # ============================================================
-try:
-    from mcp_server import mcp, http_app
-    MCP_AVAILABLE = True
-except ImportError:
-    mcp = None
-    http_app = None
-    MCP_AVAILABLE = False
-    print("⚠️ MCP server not available - running without MCP")
+from fastapi import FastAPI as _FastAPI
+
+# Создаем MCP под-приложение прямо здесь
+mcp_app = _FastAPI(title="MCP Server")
+
+@mcp_app.post("/")
+async def mcp_handler(request: Request):
+    """Обработчик MCP запросов."""
+    try:
+        body = await request.json()
+        method = body.get("method", "")
+        params = body.get("params", {})
+        symbol = params.get("symbol", "BTC")
+        
+        # Вызываем основной API
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                "https://crypto-snapshot-pro.onrender.com/",
+                json={"symbol": symbol}
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    "jsonrpc": "2.0",
+                    "id": body.get("id"),
+                    "result": data
+                }
+            else:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": body.get("id"),
+                    "error": {"code": response.status_code, "message": "Payment required"}
+                }
+    except Exception as e:
+        return {
+            "jsonrpc": "2.0",
+            "id": body.get("id", 1),
+            "error": {"code": -32000, "message": str(e)}
+        }
+
+@mcp_app.get("/health")
+async def mcp_health():
+    return {"status": "ok", "service": "MCP Server", "version": "1.0.0"}
+
+@mcp_app.get("/info")
+async def mcp_info():
+    return {
+        "name": "Crypto Snapshot Pro",
+        "version": "1.0.0",
+        "type": "mcp",
+        "protocol": "streamable-http",
+        "endpoint": "/mcp",
+        "tools": [
+            {
+                "name": "crypto_snapshot",
+                "description": "Get AI crypto analysis for any symbol",
+                "parameters": {"symbol": "string"}
+            }
+        ],
+        "price": "0.025 USDC",
+        "network": "Base",
+        "pay_to": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3"
+    }
+
+# Монтируем MCP
+app = FastAPI(
+    title="Crypto Snapshot Pro x402 Agent"
+)
+
+app.mount("/mcp", mcp_app)
+logger = logging.getLogger("crypto-snapshot")
+logger.info("✅ MCP server mounted at /mcp")
 
 load_dotenv()
 
@@ -38,50 +103,6 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
-logger = logging.getLogger("crypto-snapshot")
-
-
-app = FastAPI(
-    title="Crypto Snapshot Pro x402 Agent"
-)
-
-
-# ============================================================
-# MCP SERVER FOR AI AGENTS (ОПЦИОНАЛЬНО)
-# AgenticMarket / OpenClaw / Claude / Cursor
-# ============================================================
-
-if MCP_AVAILABLE and http_app:
-    app.mount("/mcp", http_app)
-    logger.info("✅ MCP server mounted at /mcp")
-    
-    @app.get("/mcp/health")
-    async def mcp_health():
-        return {"status": "ok", "service": "MCP Server", "version": "1.0.0"}
-    
-    @app.get("/mcp/info")
-    async def mcp_info():
-        return {
-            "name": "Crypto Snapshot Pro",
-            "version": "1.0.0",
-            "type": "mcp",
-            "protocol": "streamable-http",
-            "endpoint": "/mcp",
-            "tools": [
-                {
-                    "name": "crypto_snapshot",
-                    "description": "Get AI crypto analysis for any symbol",
-                    "parameters": {"symbol": "string"}
-                }
-            ],
-            "price": "0.025 USDC",
-            "network": "Base",
-            "pay_to": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3"
-        }
-else:
-    logger.warning("⚠️ MCP server not mounted - running without MCP support")
-
-
 # ============================================================
 # ГЛАВНАЯ СТРАНИЦА — РЕДИРЕКТ НА /app
 # ============================================================
@@ -89,7 +110,6 @@ else:
 @app.get("/")
 async def root():
     return RedirectResponse(url="/app")
-
 
 # ============================================================
 # ЯНДЕКС ФАЙЛ ДЛЯ ВЕРИФИКАЦИИ
@@ -105,12 +125,6 @@ async def yandex_verify():
         <body>Verification: d100e212bdd18c7b</body>
     </html>
     """)
-
-ASI_API_KEY = os.getenv("ASI_API_KEY", "")
-ASI_MODELS = [
-    {"id": "asi1", "name": "ASI1"},
-    {"id": "asi1-mini", "name": "ASI1 Mini"}
-]
 
 PROFESSIONAL_PROMPT = """
 You are a professional crypto trader with 20+ years of experience managing institutional portfolios.
