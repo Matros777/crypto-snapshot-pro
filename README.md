@@ -95,15 +95,9 @@ Send exactly **0.025 USDC** on **Base network** to:
 ```
 
 ### Via x402 Protocol
-
-```bash
-# Install x402 client
-npm install -g awal
-
-# Get signal with automatic payment
-awal x402 pay https://crypto-snapshot-pro.onrender.com/ \
-  --method POST \
-  --data '{"symbol":"ETH"}'
+Crypto Snapshot Pro - Payment Guide
+```
+https://gist.github.com/Matros777/c5d95532248eaaf2b86fd04f8a2753b7
 ```
 
 ### Via Web Interface
@@ -153,6 +147,15 @@ BTC, ETH, BNB, XRP, SOL, DOGE, ADA, AVAX, DOT, MATIC, SHIB, LTC, UNI, LINK, ATOM
 ## ⚠️ Risk Disclosure
 
 This service provides informational analysis based on historical and current market data. It is **NOT financial advice**. Past performance does not guarantee future results. Always do your own research and manage your risk appropriately.
+
+# Crypto Snapshot Pro
+
+[![AgenticMarket](https://agenticmarket.dev/api/badge/@matros/ai-powered-crypto-signals-for-500-pairs-get-)](https://agenticmarket.dev/matros/ai-powered-crypto-signals-for-500-pairs-get-)
+
+## Установка
+
+```bash
+npx agenticmarket install @matros/ai-powered-crypto-signals-for-500-pairs-get-
 
 ---
 
