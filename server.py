@@ -715,9 +715,6 @@ async def payable_endpoint(request: Request):
 
     return {"status": "ok", "message": "Payment verified"}
 
-# ============================================================
-# ГЛАВНЫЙ API — НА /
-# ============================================================
 @app.api_route("/", methods=["GET", "POST"])
 async def crypto_snapshot(request: Request):
     symbol = None
@@ -934,22 +931,22 @@ async def web_app():
 async def health_check():
     return {"status": "ok", "service": "crypto-snapshot-pro", "proxy_enabled": USE_PROXY}
 
-# ============================================================
-# ГЛАВНАЯ СТРАНИЦА — ДЛЯ ЯНДЕКСА
-# ============================================================
 @app.get("/")
 async def root():
-    return HTMLResponse("""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta name="yandex-verification" content="d100e212bdd18c7b" />
-        <meta name="google-site-verification" content="LNTC7t6OrMfNa9kA3Z781_R7ytdc40_i0cv5n20dOWk" />
-        <meta http-equiv="refresh" content="0; url=/app" />
-        <title>Crypto Snapshot Pro</title>
-    </head>
-    <body>
-        <a href="/app">Crypto Snapshot Pro</a>
-    </body>
-    </html>
-    """)
+    return {
+        "service": "Crypto Snapshot Pro x402 Agent",
+        "agentId": "3613",
+        "version": "4.0.0",
+        "data_source": "Binance Public API",
+        "proxy_enabled": USE_PROXY,
+        "features": ["RSI", "EMA Trend", "Volume Anomaly", "Volatility", "8-Factor Scoring"],
+        "x402": True,
+        "settle": "OpenFacilitator",
+        "web_interface": "/app",
+        "endpoints": {
+            "/": "Main endpoint (POST/GET)",
+            "/app": "Web interface (GET)",
+            "/payable": "x402 verification endpoint (POST)",
+            "/health": "Health check (GET)",
+        }
+    }
