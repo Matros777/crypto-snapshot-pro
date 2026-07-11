@@ -1,14 +1,21 @@
-# mcp_server.py - ПОЛНОСТЬЮ РАБОЧАЯ ВЕРСИЯ
-from fastmcp import FastMCP
+# mcp_server.py - УПРОЩЕННАЯ ВЕРСИЯ (без fastmcp)
+from fastapi import FastAPI, Request
 import httpx
+import json
 
-# Создаем MCP сервер
-mcp = FastMCP("Crypto Snapshot Pro")
+# Создаем обычное FastAPI приложение для MCP
+http_app = FastAPI(title="MCP Server")
 
-@mcp.tool()
-async def crypto_snapshot(symbol: str) -> dict:
-    """Get AI crypto analysis for any symbol."""
+@http_app.post("/")
+async def mcp_handler(request: Request):
+    """Обработчик MCP запросов."""
     try:
+        body = await request.json()
+        method = body.get("method", "")
+        params = body.get("params", {})
+        symbol = params.get("symbol", "BTC")
+        
+        # Вызываем основной API
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 "https://crypto-snapshot-pro.onrender.com/",
@@ -17,38 +24,36 @@ async def crypto_snapshot(symbol: str) -> dict:
             
             if response.status_code == 200:
                 data = response.json()
-                if "message" in data and "content" in data["message"]:
-                    return {
-                        "status": "success",
-                        "analysis": data["message"]["content"],
-                        "symbol": symbol
-                    }
-                return {"status": "success", "data": data, "symbol": symbol}
-            elif response.status_code == 402:
                 return {
-                    "status": "payment_required",
-                    "message": "Payment required for this request",
-                    "pay_to": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
-                    "amount": "0.025 USDC",
-                    "network": "Base"
+                    "jsonrpc": "2.0",
+                    "id": body.get("id"),
+                    "result": data
                 }
-            return {"status": "error", "message": f"API error: {response.status_code}"}
+            else:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": body.get("id"),
+                    "error": {"code": response.status_code, "message": "Payment required"}
+                }
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return {
+            "jsonrpc": "2.0",
+            "id": body.get("id", 1),
+            "error": {"code": -32000, "message": str(e)}
+        }
 
-@mcp.tool()
-async def get_supported_pairs() -> list:
-    """Get list of supported crypto pairs."""
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get("https://api.binance.com/api/v3/exchangeInfo")
-            if response.status_code == 200:
-                data = response.json()
-                return [s["symbol"] for s in data["symbols"] 
-                       if s["quoteAsset"] == "USDT" and s["status"] == "TRADING"][:50]
-            return []
-    except:
-        return ["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "XRPUSDT"]
+@http_app.get("/health")
+async def health():
+    return {"status": "ok", "service": "MCP Server"}
 
-if __name__ == "__main__":
-    mcp.run(transport="streamable-http", host="0.0.0.0", port=8000)
+@http_app.get("/info")
+async def info():
+    return {
+        "name": "Crypto Snapshot Pro",
+        "version": "1.0.0",
+        "type": "mcp",
+        "endpoint": "/mcp"
+    }
+
+# Для совместимости с server.py
+mcp = type('MCP', (), {'http_app': lambda: http_app})()
