@@ -18,9 +18,17 @@ import os
 from typing import Optional, Any
 from dotenv import load_dotenv
 
-# MCP
-from mcp_server import mcp
-
+# ============================================================
+# MCP - ОПЦИОНАЛЬНО (не обязателен для работы)
+# ============================================================
+try:
+    from mcp_server import mcp, http_app
+    MCP_AVAILABLE = True
+except ImportError:
+    mcp = None
+    http_app = None
+    MCP_AVAILABLE = False
+    print("⚠️ MCP server not available - running without MCP")
 
 load_dotenv()
 
@@ -39,18 +47,43 @@ app = FastAPI(
 
 
 # ============================================================
-# MCP SERVER FOR AI AGENTS
+# MCP SERVER FOR AI AGENTS (ОПЦИОНАЛЬНО)
 # AgenticMarket / OpenClaw / Claude / Cursor
 # ============================================================
 
-app.mount(
-    "/mcp",
-    mcp.http_app()
-)
+if MCP_AVAILABLE and http_app:
+    app.mount("/mcp", http_app)
+    logger.info("✅ MCP server mounted at /mcp")
+    
+    @app.get("/mcp/health")
+    async def mcp_health():
+        return {"status": "ok", "service": "MCP Server", "version": "1.0.0"}
+    
+    @app.get("/mcp/info")
+    async def mcp_info():
+        return {
+            "name": "Crypto Snapshot Pro",
+            "version": "1.0.0",
+            "type": "mcp",
+            "protocol": "streamable-http",
+            "endpoint": "/mcp",
+            "tools": [
+                {
+                    "name": "crypto_snapshot",
+                    "description": "Get AI crypto analysis for any symbol",
+                    "parameters": {"symbol": "string"}
+                }
+            ],
+            "price": "0.025 USDC",
+            "network": "Base",
+            "pay_to": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3"
+        }
+else:
+    logger.warning("⚠️ MCP server not mounted - running without MCP support")
 
 
 # ============================================================
-# ГЛАВНАЯ СТРАНИЦА — РЕДИРЕКТ НА /app (ДОЛЖЕН БЫТЬ ПЕРВЫМ!)
+# ГЛАВНАЯ СТРАНИЦА — РЕДИРЕКТ НА /app
 # ============================================================
 
 @app.get("/")
