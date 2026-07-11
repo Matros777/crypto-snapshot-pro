@@ -1238,3 +1238,51 @@ async def web_app():
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "crypto-snapshot-pro", "proxy_enabled": USE_PROXY}
+
+# ============================================================
+# ЭНДПОИНТ ДЛЯ БАЛАНСА (ВОССТАНАВЛИВАЕМ)
+# ============================================================
+
+class BalanceRequest(BaseModel):
+    address: str
+
+@app.post("/api/balance")
+async def get_balance(request: BalanceRequest):
+    """Получение баланса USDC."""
+    try:
+        address = request.address
+        
+        if not address or not address.startswith("0x") or len(address) != 42:
+            return {"error": "Invalid address", "balance": "0"}
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # Запрос баланса USDC
+            data = {
+                "jsonrpc": "2.0",
+                "method": "eth_call",
+                "params": [{
+                    "to": USDC_ADDRESS,
+                    "data": f"0x70a08231000000000000000000000000{address[2:].lower()}"
+                }, "latest"],
+                "id": 1
+            }
+            
+            response = await client.post(ALCHEMY_URL, json=data)
+            
+            if response.status_code == 200:
+                result = response.json()
+                if "result" in result and result["result"] != "0x":
+                    balance_wei = int(result["result"], 16)
+                    balance = balance_wei / 10**6
+                    return {"balance": str(balance), "usdc": balance}
+            
+            return {"balance": "0"}
+            
+    except Exception as e:
+        logger.error(f"Balance error: {e}")
+        return {"balance": "0", "error": str(e)}
+
+@app.get("/api/balance/{address}")
+async def get_balance_get(address: str):
+    """GET версия баланса."""
+    return await get_balance(BalanceRequest(address=address))
