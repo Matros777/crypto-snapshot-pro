@@ -731,15 +731,25 @@ PAYMENT_CONFIG = {
 }
 
 def create_402_response():
-    envelope = json.dumps(PAYMENT_CONFIG, separators=(',', ':'))
-    encoded = base64.b64encode(envelope.encode("utf-8")).decode("utf-8")
-    logger.info("402 Payment Required sent")
+    # Возвращаем JSON с платежными требованиями
     return Response(
-        content="Payment Required",
+        content=json.dumps({
+            "x402Version": 2,
+            "accepts": [
+                {
+                    "scheme": "exact",
+                    "network": "eip155:8453",
+                    "amount": "25000",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
+                    "maxTimeoutSeconds": 300,
+                    "description": "Real-time crypto market analysis using 8-factor scoring. Price: $0.025 per request."
+                }
+            ]
+        }),
         status_code=402,
         headers={
-            "payment-required": encoded,  # нижний регистр, без Bearer!
-            "content-type": "text/plain"
+            "Content-Type": "application/json"
         }
     )
 
