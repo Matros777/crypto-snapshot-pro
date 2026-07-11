@@ -302,7 +302,7 @@ async def root():
         return HTMLResponse("<h1>Web interface not found</h1>", status_code=404)
 
 # ============================================================
-# X402 ЭНДПОИНТ ДЛЯ ОПЛАТЫ (ОСНОВНАЯ ССЫЛКА)
+# X402 ЭНДПОИНТ ДЛЯ ОПЛАТЫ (ОСНОВНАЯ ССЫЛКА) — ИСПРАВЛЕН
 # ============================================================
 
 def create_402_response():
@@ -326,38 +326,22 @@ def create_402_response():
                     "version": "2",
                     "chainId": 8453,
                     "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-                },
-                "extra": {
-                    "name": "USD Coin",
-                    "version": "2"
                 }
             }
-        ],
-        "extensions": {
-            "bazaar": {
-                "info": {
-                    "input": {
-                        "type": "http",
-                        "method": "POST",
-                        "bodyType": "json"
-                    }
-                }
-            }
-        }
+        ]
     }
 
     encoded = base64.b64encode(
         json.dumps(payment_requirements).encode()
     ).decode()
 
-    return JSONResponse(
+    return Response(
         status_code=402,
-        content={"payment-requirements": encoded},
         headers={
-            "PAYMENT-REQUIRED": encoded,
             "payment-required": encoded,
             "Content-Type": "application/json"
-        }
+        },
+        content=json.dumps(payment_requirements)
     )
 
 @app.post("/")
