@@ -19,7 +19,7 @@ from typing import Optional, Any
 from dotenv import load_dotenv
 
 # ============================================================
-# ЗАГРУЗКА ПЕРЕМЕННЫХ И ЛОГГЕР (СНАЧАЛА!)
+# ЗАГРУЗКА ПЕРЕМЕННЫХ И ЛОГГЕР
 # ============================================================
 
 load_dotenv()
@@ -39,7 +39,6 @@ logger = logging.getLogger("crypto-snapshot")
 AGENTIC_TOKEN = os.getenv("AGENTIC_TOKEN", "")
 
 def verify_agentic_token(request: Request) -> bool:
-    """Проверяет токен авторизации от Agentic Market."""
     if not AGENTIC_TOKEN:
         return True
     
@@ -63,7 +62,7 @@ app = FastAPI(
 )
 
 # ============================================================
-# MCP СЕРВЕР — ВСТРОЕННЫЙ
+# MCP СЕРВЕР
 # ============================================================
 
 from fastapi import FastAPI as _FastAPI
@@ -289,12 +288,23 @@ app.mount("/mcp", mcp_app)
 logger.info("✅ MCP server mounted at /mcp")
 
 # ============================================================
-# ГЛАВНАЯ СТРАНИЦА — РЕДИРЕКТ НА /app (ДЛЯ БРАУЗЕРА)
+# ГЛАВНАЯ СТРАНИЦА — УМНЫЙ ОТВЕТ (И РЕДИРЕКТ, И X402)
 # ============================================================
 
 @app.get("/")
-async def root():
-    """GET запрос на корень — возвращаем payment config для x402 details."""
+async def root(request: Request):
+    """
+    GET запрос на корень:
+    - Браузер (text/html) -> редирект на /app
+    - x402 (application/json) -> payment config
+    """
+    accept_header = request.headers.get("accept", "")
+    
+    # Если браузер хочет HTML - редирект
+    if "text/html" in accept_header:
+        return RedirectResponse(url="/app")
+    
+    # Иначе - payment config для x402
     encoded = encode_payment_config()
     return Response(
         status_code=402,
@@ -669,7 +679,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         return False
 
 # ============================================================
-# ПРАВИЛЬНЫЙ X402 PAYMENT_CONFIG
+# ПРАВИЛЬНЫЙ X402 PAYMENT_CONFIG С EIP-712 DOMAIN
 # ============================================================
 
 PAYMENT_CONFIG = {
@@ -686,7 +696,14 @@ PAYMENT_CONFIG = {
             "amount": "25000",
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
-            "maxTimeoutSeconds": 300
+            "maxTimeoutSeconds": 300,
+            # ⚠️ ВАЖНО! EIP-712 DOMAIN PARAMETERS ДЛЯ USDC НА BASE
+            "domain": {
+                "name": "USD Coin",
+                "version": "2",
+                "chainId": 8453,
+                "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+            }
         }
     ],
     "extensions": {
