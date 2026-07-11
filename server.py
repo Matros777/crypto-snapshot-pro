@@ -3,6 +3,7 @@ Crypto Snapshot Pro — x402 Agent for Agentic.Market
 Agent ID: #3613
 Service: Professional Multi-Factor Market Analysis ($0.025 per request)
 """
+
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -17,6 +18,10 @@ import os
 from typing import Optional, Any
 from dotenv import load_dotenv
 
+# MCP
+from mcp_server import mcp
+
+
 load_dotenv()
 
 logging.basicConfig(
@@ -24,20 +29,39 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[logging.StreamHandler(sys.stdout)]
 )
+
 logger = logging.getLogger("crypto-snapshot")
 
-app = FastAPI(title="Crypto Snapshot Pro x402 Agent")
+
+app = FastAPI(
+    title="Crypto Snapshot Pro x402 Agent"
+)
+
+
+# ============================================================
+# MCP SERVER FOR AI AGENTS
+# AgenticMarket / OpenClaw / Claude / Cursor
+# ============================================================
+
+app.mount(
+    "/mcp",
+    mcp.http_app()
+)
+
 
 # ============================================================
 # ГЛАВНАЯ СТРАНИЦА — РЕДИРЕКТ НА /app (ДОЛЖЕН БЫТЬ ПЕРВЫМ!)
 # ============================================================
+
 @app.get("/")
 async def root():
     return RedirectResponse(url="/app")
 
+
 # ============================================================
 # ЯНДЕКС ФАЙЛ ДЛЯ ВЕРИФИКАЦИИ
 # ============================================================
+
 @app.get("/yandex_d100e212bdd18c7b.html")
 async def yandex_verify():
     return HTMLResponse("""
