@@ -19,11 +19,34 @@ from typing import Optional, Any
 from dotenv import load_dotenv
 
 # ============================================================
-# MCP - ПРОСТОЙ ВСТРОЕННЫЙ СЕРВЕР (ВСЕГДА РАБОТАЕТ)
+# ЗАГРУЗКА ПЕРЕМЕННЫХ И ЛОГГЕР (СНАЧАЛА!)
 # ============================================================
+
+load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+
+logger = logging.getLogger("crypto-snapshot")
+
+# ============================================================
+# СОЗДАЕМ ГЛАВНОЕ ПРИЛОЖЕНИЕ
+# ============================================================
+
+app = FastAPI(
+    title="Crypto Snapshot Pro x402 Agent"
+)
+
+# ============================================================
+# MCP СЕРВЕР — ВСТРОЕННЫЙ (ВСЕГДА РАБОТАЕТ)
+# ============================================================
+
 from fastapi import FastAPI as _FastAPI
 
-# Создаем MCP под-приложение прямо здесь
+# Создаем MCP под-приложение
 mcp_app = _FastAPI(title="MCP Server")
 
 @mcp_app.post("/")
@@ -35,7 +58,6 @@ async def mcp_handler(request: Request):
         params = body.get("params", {})
         symbol = params.get("symbol", "BTC")
         
-        # Вызываем основной API
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 "https://crypto-snapshot-pro.onrender.com/",
@@ -86,22 +108,9 @@ async def mcp_info():
         "pay_to": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3"
     }
 
-# Монтируем MCP
-app = FastAPI(
-    title="Crypto Snapshot Pro x402 Agent"
-)
-
+# МОНТИРУЕМ MCP
 app.mount("/mcp", mcp_app)
-logger = logging.getLogger("crypto-snapshot")
 logger.info("✅ MCP server mounted at /mcp")
-
-load_dotenv()
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
 
 # ============================================================
 # ГЛАВНАЯ СТРАНИЦА — РЕДИРЕКТ НА /app
@@ -125,6 +134,16 @@ async def yandex_verify():
         <body>Verification: d100e212bdd18c7b</body>
     </html>
     """)
+
+# ============================================================
+# ОСТАЛЬНЫЕ ПЕРЕМЕННЫЕ И ФУНКЦИИ
+# ============================================================
+
+ASI_API_KEY = os.getenv("ASI_API_KEY", "")
+ASI_MODELS = [
+    {"id": "asi1", "name": "ASI1"},
+    {"id": "asi1-mini", "name": "ASI1 Mini"}
+]
 
 PROFESSIONAL_PROMPT = """
 You are a professional crypto trader with 20+ years of experience managing institutional portfolios.
@@ -808,31 +827,29 @@ async def payable_endpoint(request: Request):
     return {"status": "ok", "message": "Payment verified"}
 
 # ============================================================
-# ГЛАВНЫЙ API — ТОЛЬКО POST (НЕ GET!)
+# ГЛАВНЫЙ API — ТОЛЬКО POST
 # ============================================================
+
 @app.post("/")
 async def crypto_snapshot(request: Request):
     symbol = None
     tx_hash = None
 
-    if request.method == "POST":
-        try:
-            body = await request.json()
-        except:
-            raise HTTPException(status_code=400, detail="Invalid JSON body")
+    try:
+        body = await request.json()
+    except:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
 
-        tx_hash = body.get("tx_hash")
+    tx_hash = body.get("tx_hash")
 
-        if "message" in body and isinstance(body["message"], dict):
-            symbol = body["message"].get("content", "").strip()
-        elif isinstance(body, dict) and "symbol" in body:
-            symbol = body["symbol"].strip()
-        elif "content" in body:
-            symbol = body["content"].strip()
-        elif "message" in body and isinstance(body["message"], str):
-            symbol = body["message"].strip()
-    else:
-        symbol = request.query_params.get("symbol", "ETH")
+    if "message" in body and isinstance(body["message"], dict):
+        symbol = body["message"].get("content", "").strip()
+    elif isinstance(body, dict) and "symbol" in body:
+        symbol = body["symbol"].strip()
+    elif "content" in body:
+        symbol = body["content"].strip()
+    elif "message" in body and isinstance(body["message"], str):
+        symbol = body["message"].strip()
 
     if not symbol:
         return AgentResponse(message={
