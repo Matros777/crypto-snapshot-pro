@@ -321,10 +321,7 @@ def create_402_response():
                 "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
                 "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
                 "maxTimeoutSeconds": 300,
-                "extra": {
-                    "name": "USD Coin",
-                    "version": "2"
-                },
+                "extra": {"name": "USD Coin", "version": "2"},
                 "domain": {
                     "name": "USD Coin",
                     "version": "2",
@@ -343,9 +340,9 @@ def create_402_response():
         status_code=402,
         headers={
             "payment-required": encoded,
-            "Content-Type": "application/json"
+            "Content-Type": "text/plain"
         },
-        content=encoded  # ← ТОЛЬКО BASE64, БЕЗ JSON-ОБЁРТКИ!
+        content=encoded  # ТОЛЬКО base64
     )
 
 @app.post("/")
