@@ -716,19 +716,18 @@ PAYMENT_CONFIG = {
 # ============================================================
 
 def create_402_response():
-    # Кодируем PAYMENT_CONFIG в base64 для заголовка
+    # Кодируем PAYMENT_CONFIG в base64
     encoded = base64.b64encode(
         json.dumps(PAYMENT_CONFIG).encode()
     ).decode()
 
-    # Для POST возвращаем {"paymentRequirements": "..."}
     return Response(
         status_code=402,
         headers={
             "payment-required": encoded,
             "Content-Type": "application/json"
         },
-        content=json.dumps({"paymentRequirements": encoded})
+        content=json.dumps({"paymentRequirements": encoded})  # ← ОБЁРТКА!
     )
 
 # ============================================================
