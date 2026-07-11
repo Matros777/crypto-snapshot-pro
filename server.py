@@ -731,25 +731,66 @@ PAYMENT_CONFIG = {
 }
 
 def create_402_response():
-    # Возвращаем JSON с платежными требованиями
-    return Response(
-        content=json.dumps({
-            "x402Version": 2,
-            "accepts": [
-                {
-                    "scheme": "exact",
-                    "network": "eip155:8453",
-                    "amount": "25000",
+
+    payment_requirements = {
+        "x402Version": 2,
+
+        "resource": {
+            "url": "https://crypto-snapshot-pro.onrender.com/",
+            "description": "Real-time crypto market analysis using 8-factor scoring. Price: $0.025 per request.",
+            "mimeType": "application/json"
+        },
+
+        "accepts": [
+            {
+                "scheme": "exact",
+                "network": "eip155:8453",
+                "amount": "25000",
+                "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
+                "maxTimeoutSeconds": 300,
+
+                "domain": {
+                    "name": "USD Coin",
+                    "version": "2",
+                    "chainId": 8453,
+                    "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                },
+
+                "extra": {
+                    "name": "USD Coin",
+                    "version": "2",
                     "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-                    "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
-                    "maxTimeoutSeconds": 300,
-                    "description": "Real-time crypto market analysis using 8-factor scoring. Price: $0.025 per request."
+                    "assetTransferMethod": "eip3009"
                 }
-            ]
-        }),
+            }
+        ],
+
+        "extensions": {
+            "bazaar": {
+                "info": {
+                    "input": {
+                        "type": "http",
+                        "method": "POST",
+                        "bodyType": "json"
+                    }
+                }
+            }
+        }
+    }
+
+
+    encoded = base64.b64encode(
+        json.dumps(payment_requirements).encode()
+    ).decode()
+
+
+    return JSONResponse(
         status_code=402,
+        content={"error": "Payment Required"},
         headers={
-            "Content-Type": "application/json"
+            "PAYMENT-REQUIRED": encoded,
+            "payment-required": encoded
         }
     )
 
