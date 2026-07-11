@@ -289,12 +289,12 @@ app.mount("/mcp", mcp_app)
 logger.info("✅ MCP server mounted at /mcp")
 
 # ============================================================
-# ГЛАВНАЯ СТРАНИЦА — ОТДАЁТ 402 ДЛЯ GET!
+# ГЛАВНАЯ СТРАНИЦА — ОТДАЁТ X402 JSON ДЛЯ GET!
 # ============================================================
 
 @app.get("/")
 async def root(request: Request):
-    """GET запрос на корень — отдаёт x402 payment requirements."""
+    """GET запрос на корень — отдаёт чистый x402 JSON."""
     return create_402_response()
 
 # ============================================================
@@ -712,23 +712,23 @@ PAYMENT_CONFIG = {
 }
 
 # ============================================================
-# X402 ОТВЕТ
+# X402 ОТВЕТ — ЧИСТЫЙ JSON ДЛЯ GET И POST
 # ============================================================
 
 def create_402_response():
-    # Кодируем PAYMENT_CONFIG в base64
+    # Кодируем PAYMENT_CONFIG в base64 для заголовка
     encoded = base64.b64encode(
         json.dumps(PAYMENT_CONFIG).encode()
     ).decode()
 
-    logger.info("402 Payment Required sent")
+    # Для GET и POST возвращаем чистый JSON
     return Response(
         status_code=402,
         headers={
             "payment-required": encoded,
             "Content-Type": "application/json"
         },
-        content=json.dumps({"paymentRequirements": encoded})
+        content=json.dumps(PAYMENT_CONFIG)  # ← ЧИСТЫЙ JSON, НЕ {"paymentRequirements": "..."}!
     )
 
 # ============================================================
