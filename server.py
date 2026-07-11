@@ -294,8 +294,13 @@ logger.info("✅ MCP server mounted at /mcp")
 
 @app.get("/")
 async def root():
-    """GET запрос на корень — редирект на веб-интерфейс."""
-    return RedirectResponse(url="/app")
+    """GET запрос на корень — возвращаем payment config для x402 details."""
+    encoded = encode_payment_config()
+    return Response(
+        status_code=402,
+        headers={"payment-required": encoded},
+        content=json.dumps(PAYMENT_CONFIG)
+    )
 
 # ============================================================
 # ЯНДЕКС ВЕРИФИКАЦИЯ
@@ -711,29 +716,23 @@ PAYMENT_CONFIG = {
     }
 }
 
-# ============================================================
-# X402 ОТВЕТ — ПРАВИЛЬНЫЙ!
-# ============================================================
+def encode_payment_config():
+    """Кодирует PAYMENT_CONFIG в base64."""
+    return base64.b64encode(
+        json.dumps(PAYMENT_CONFIG).encode()
+    ).decode()
 
-@app.get("/")
-async def root():
-    # GET — возвращаем чистый JSON (для details)
+def create_402_response():
+    """Создает 402 Payment Required ответ для POST запросов."""
+    encoded = encode_payment_config()
     return Response(
         status_code=402,
-        headers={"payment-required": encoded},
-        content=json.dumps(PAYMENT_CONFIG)
+        headers={
+            "payment-required": encoded,
+            "Content-Type": "application/json"
+        },
+        content=json.dumps({"paymentRequirements": encoded})
     )
-
-@app.post("/")
-async def crypto_snapshot(request: Request):
-    # POST — возвращаем обёртку (для pay)
-    if not payment_header:
-        return Response(
-            status_code=402,
-            headers={"payment-required": encoded},
-            content=json.dumps({"paymentRequirements": encoded})
-        )
-    # ... остальная логика
 
 # ============================================================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
@@ -1019,60 +1018,44 @@ async def payable_endpoint(request: Request):
     return {"status": "ok", "message": "Payment verified"}
 
 # ============================================================
-# ГЛАВНЫЙ API — ТОЛЬКО POST
+# ГЛАВНЫЙ API — POST ОБРАБОТЧИК
 # ============================================================
 
 @app.post("/")
 async def crypto_snapshot(request: Request):
-    symbol = None
-    tx_hash = None
-
-    try:
-        body = await request.json()
-    except:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
-
-    tx_hash = body.get("tx_hash")
-
-    if "message" in body and isinstance(body["message"], dict):
-        symbol = body["message"].get("content", "").strip()
-    elif isinstance(body, dict) and "symbol" in body:
-        symbol = body["symbol"].strip()
-    elif "content" in body:
-        symbol = body["content"].strip()
-    elif "message" in body and isinstance(body["message"], str):
-        symbol = body["message"].strip()
-
-    if not symbol:
-        return AgentResponse(message={
-            "role": "assistant",
-            "content": "📊 CRYPTO SNAPSHOT PRO\n\nSend a symbol to analyze.\n\nExamples:\n• BTC\n• ETH\n• SOL\n• DOGE\n• XRP\n\nUsage: POST {\"symbol\": \"BTC\"}"
-        })
-
-    if tx_hash:
-        logger.info(f"🔍 Verifying tx: {tx_hash}")
-        if not await verify_tx_payment(tx_hash):
-            return Response(
-                content="Payment verification failed. Transaction not found or invalid.",
-                status_code=402
-            )
-        logger.info(f"✅ Tx {tx_hash} verified")
-    else:
-        payment_header = (
-            request.headers.get("x-payment") or
-            request.headers.get("payment-signature")
-        )
-
-        if not payment_header:
-            return create_402_response()
-
+    """POST — проверяет платеж и возвращает анализ."""
+    # ПРОВЕРЯЕМ ПЛАТЁЖ ПЕРВЫМ ДЕЛОМ!
+    payment_header = (
+        request.headers.get("x-payment") or
+        request.headers.get("payment-signature")
+    )
+    
+    # ЕСЛИ ЕСТЬ ПЛАТЁЖ — ПРОВЕРЯЕМ
+    if payment_header:
         valid = await verify_and_settle_with_facilitator(payment_header)
         if not valid:
             return Response(
                 content="Payment verification failed",
                 status_code=402
             )
+        # ПЛАТЁЖ ПРОШЁЛ — ГЕНЕРИРУЕМ СИГНАЛ
+        try:
+            body = await request.json()
+        except:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+        symbol = body.get("symbol", "BTC")
+        result = await generate_signal(symbol)
+        return AgentResponse(message={"role": "assistant", "content": result})
+    
+    # ЕСЛИ НЕТ ПЛАТЕЖА — ВОЗВРАЩАЕМ 402
+    return create_402_response()
 
+# ============================================================
+# ГЕНЕРАЦИЯ СИГНАЛА
+# ============================================================
+
+async def generate_signal(symbol: str) -> str:
+    """Генерирует торговый сигнал для указанного символа."""
     try:
         symbol = symbol.upper()
         symbol = symbol.replace("USDT", "").replace("USD", "").replace("NODE", "")
@@ -1213,7 +1196,7 @@ async def crypto_snapshot(request: Request):
 ⚠️  Risk Disclosure: This is NOT financial advice. Always manage risk. Past performance does not guarantee future results.
 """
 
-        return AgentResponse(message={"role": "assistant", "content": result})
+        return result
 
     except HTTPException:
         raise
