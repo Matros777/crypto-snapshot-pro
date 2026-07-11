@@ -4,7 +4,7 @@ Agent ID: #3613
 Service: Professional Multi-Factor Market Analysis ($0.025 per request)
 """
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import httpx
@@ -720,6 +720,12 @@ async def payable_endpoint(request: Request):
 # ============================================================
 @app.api_route("/", methods=["GET", "POST"])
 async def crypto_snapshot(request: Request):
+    # Проверяем, не отдает ли корень HTML для Яндекса
+    if request.method == "GET" and not request.headers.get("x-payment"):
+        # Пропускаем GET запросы без оплаты — они отдаются через root()
+        # Но это уже обработано в @app.get("/")
+        pass
+    
     symbol = None
     tx_hash = None
 
@@ -820,8 +826,7 @@ async def crypto_snapshot(request: Request):
             risk_reward = (target - entry) / (entry - stop) if entry > stop else 0
         elif signal == "SHORT":
             entry = resistance - (resistance - support) * 0.2
-            target = entry - (resistance - entry) * 2
-            stop = resistance + atr_proxy * 0.5
+            target = entry - (resistance - entry) * 2            stop = resistance + atr_proxy * 0.5
             risk_reward = (entry - target) / (stop - entry) if stop > entry else 0
         else:
             entry = current_price
@@ -935,22 +940,21 @@ async def health_check():
     return {"status": "ok", "service": "crypto-snapshot-pro", "proxy_enabled": USE_PROXY}
 
 # ============================================================
-# ЯНДЕКС ФАЙЛ ДЛЯ ВЕРИФИКАЦИИ
-# ============================================================
-@app.get("/yandex_d100e212bdd18c7b.html")
-async def yandex_verify():
-    return HTMLResponse("""
-    <html>
-        <head>
-            <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-        </head>
-        <body>Verification: d100e212bdd18c7b</body>
-    </html>
-    """)
-
-# ============================================================
-# ГЛАВНАЯ СТРАНИЦА — РЕДИРЕКТ НА /app
+# ГЛАВНАЯ СТРАНИЦА — ДЛЯ ЯНДЕКСА
 # ============================================================
 @app.get("/")
 async def root():
-    return RedirectResponse(url="/app")
+    return HTMLResponse("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta name="yandex-verification" content="d100e212bdd18c7b" />
+        <meta name="google-site-verification" content="LNTC7t6OrMfNa9kA3Z781_R7ytdc40_i0cv5n20dOWk" />
+        <meta http-equiv="refresh" content="0; url=/app" />
+        <title>Crypto Snapshot Pro</title>
+    </head>
+    <body>
+        <a href="/app">Crypto Snapshot Pro</a>
+    </body>
+    </html>
+    """)
