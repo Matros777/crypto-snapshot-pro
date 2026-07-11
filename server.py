@@ -63,7 +63,7 @@ app = FastAPI(
 )
 
 # ============================================================
-# MCP СЕРВЕР
+# MCP СЕРВЕР — ВСТРОЕННЫЙ
 # ============================================================
 
 from fastapi import FastAPI as _FastAPI
@@ -289,244 +289,15 @@ app.mount("/mcp", mcp_app)
 logger.info("✅ MCP server mounted at /mcp")
 
 # ============================================================
-# ГЛАВНАЯ СТРАНИЦА — ТЕПЕРЬ БЕЗ РЕДИРЕКТА
+# ГЛАВНАЯ СТРАНИЦА
 # ============================================================
 
 @app.get("/")
 async def root():
-    """Главная страница — отдаёт веб-интерфейс."""
-    try:
-        with open("static/index.html", "r", encoding="utf-8") as f:
-            return HTMLResponse(f.read())
-    except FileNotFoundError:
-        return HTMLResponse("<h1>Web interface not found</h1>", status_code=404)
+    return RedirectResponse(url="/app")
 
 # ============================================================
-# X402 ЭНДПОИНТ — ИСПРАВЛЕН (ТЕЛО = base64)
-# ============================================================
-
-def create_402_response():
-    payment_requirements = {
-        "x402Version": 2,
-        "resource": {
-            "url": "https://crypto-snapshot-pro.onrender.com/",
-            "description": "Real-time crypto market analysis using 8-factor scoring. Price: $0.025 per request.",
-            "mimeType": "application/json"
-        },
-        "accepts": [
-            {
-                "scheme": "exact",
-                "network": "eip155:8453",
-                "amount": "25000",
-                "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-                "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
-                "maxTimeoutSeconds": 300,
-                "extra": {"name": "USD Coin", "version": "2"},
-                "domain": {
-                    "name": "USD Coin",
-                    "version": "2",
-                    "chainId": 8453,
-                    "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-                }
-            }
-        ]
-    }
-
-    encoded = base64.b64encode(
-        json.dumps(payment_requirements).encode()
-    ).decode()
-
-    return Response(
-        status_code=402,
-        headers={
-            "payment-required": encoded,
-            "Content-Type": "text/plain"
-        },
-        content=encoded  # ТОЛЬКО base64
-    )
-
-@app.post("/")
-async def crypto_snapshot(request: Request):
-    """Главный эндпоинт для x402 оплаты и получения сигналов."""
-    try:
-        # Проверяем наличие платежного заголовка
-        payment_header = (
-            request.headers.get("x-payment") or
-            request.headers.get("payment-signature")
-        )
-        
-        if not payment_header:
-            return create_402_response()
-        
-        # Проверяем платеж через фасилитатор
-        valid = await verify_and_settle_with_facilitator(payment_header)
-        if not valid:
-            return Response(
-                content="Payment verification failed",
-                status_code=402
-            )
-        
-        # Получаем символ из запроса
-        try:
-            body = await request.json()
-        except:
-            raise HTTPException(status_code=400, detail="Invalid JSON body")
-        
-        symbol = body.get("symbol", "BTC")
-        
-        # Генерируем сигнал
-        result = await generate_signal(symbol)
-        
-        return AgentResponse(message={"role": "assistant", "content": result})
-        
-    except Exception as e:
-        logger.error(f"Error in /: {e}")
-        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-
-async def generate_signal(symbol: str) -> str:
-    """Генерирует торговый сигнал для указанного символа."""
-    symbol = symbol.upper()
-    symbol = symbol.replace("USDT", "").replace("USD", "").replace("NODE", "")
-    symbol = f"{symbol}USDT"
-
-    ticker = await fetch_ticker(symbol)
-    current_price = float(ticker.get("price", 0))
-    change_24h = float(ticker.get("change", 0))
-    high_24h = float(ticker.get("high", 0))
-    low_24h = float(ticker.get("low", 0))
-
-    if current_price == 0:
-        raise HTTPException(status_code=503, detail="Market data unavailable")
-
-    klines = await fetch_klines(symbol)
-    closes = [k["close"] for k in klines]
-    volumes = [k["volume"] for k in klines]
-
-    rsi = calculate_rsi(closes, 14)
-    ema20 = calculate_ema(closes[-20:], 20) if len(closes) >= 20 else closes[-1]
-    ema50 = calculate_ema(closes[-50:], 50) if len(closes) >= 50 else closes[-1]
-    avg_volume = sum(volumes[-20:]) / 20 if len(volumes) >= 20 else volumes[-1]
-    current_volume = volumes[-1] if volumes else 0
-    volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
-    high_low_range = (high_24h - low_24h) / low_24h if low_24h > 0 else 0
-
-    macd, macd_signal, macd_hist = calculate_macd(closes)
-    bb_upper, bb_middle, bb_lower = calculate_bollinger_bands(closes)
-    rsi_divergence = detect_rsi_divergence(rsi, closes)
-    pivot = calculate_pivot_points(high_24h, low_24h, current_price)
-
-    signal_type, signal_desc, long_score, short_score = get_signal_from_factors(
-        rsi, ema20, ema50, volume_ratio, high_low_range,
-        macd, macd_signal, macd_hist, bb_upper, bb_middle, bb_lower,
-        rsi_divergence, pivot
-    )
-
-    atr_proxy = high_low_range * current_price
-    support = low_24h
-    resistance = high_24h
-
-    if signal_type == "LONG":
-        entry = support + (resistance - support) * 0.2
-        target = entry + (entry - support) * 2
-        stop = support - atr_proxy * 0.5
-        risk_reward = (target - entry) / (entry - stop) if entry > stop else 0
-    elif signal_type == "SHORT":
-        entry = resistance - (resistance - support) * 0.2
-        target = entry - (resistance - entry) * 2
-        stop = resistance + atr_proxy * 0.5
-        risk_reward = (entry - target) / (stop - entry) if stop > entry else 0
-    else:
-        entry = current_price
-        target = current_price * 1.05
-        stop = current_price * 0.95
-        risk_reward = 1.0
-
-    total_score = long_score + short_score
-    conviction = "VERY HIGH" if total_score >= 5 else "HIGH" if total_score >= 4 else "MEDIUM" if total_score >= 3 else "LOW"
-
-    if rsi < 30:
-        rsi_status = "oversold"
-    elif rsi > 70:
-        rsi_status = "overbought"
-    else:
-        rsi_status = "neutral"
-
-    signal_data = {
-        'price': current_price,
-        'change': change_24h,
-        'rsi': rsi,
-        'ema20': ema20,
-        'ema50': ema50,
-        'volume_ratio': volume_ratio,
-        'signal': signal_type,
-        'conviction': conviction,
-        'entry': entry,
-        'target': target,
-        'stop': stop,
-        'risk_reward': risk_reward,
-        'support': support,
-        'resistance': resistance,
-        'high_24h': high_24h,
-        'low_24h': low_24h,
-        'long_score': long_score,
-        'short_score': short_score
-    }
-
-    ai_analysis = await generate_ai_analysis(symbol, signal_data)
-
-    result = f"""
-╔══════════════════════════════════════════════════════════════════╗
-║  📊 CRYPTO SNAPSHOT PRO — {symbol.replace('USDT', '/USDT')}          ║
-╚══════════════════════════════════════════════════════════════════╝
-
-╔══════════════════════════════════════════════════════════════════╗
-║  🎯 TECHNICAL SIGNAL                                           ║
-╠══════════════════════════════════════════════════════════════════╣
-║  {signal_desc} ║
-║  Conviction: {conviction:<10}  |  Score: {long_score:.1f}🟢LONG / {short_score:.1f}🔴SHORT    ║
-║  Reason: {'Bullish factors dominate.' if long_score > short_score else 'Bearish factors dominate.' if short_score > long_score else 'Mixed signals. Wait for confirmation.'} ║
-╚══════════════════════════════════════════════════════════════════╝
-
-╔══════════════════════════════════════════════════════════════════╗
-║  📈 TECHNICAL INDICATORS                                       ║
-╠══════════════════════════════════════════════════════════════════╣
-║  Price:  {format_price(current_price):<20}  24h Change: {change_24h:+.2f}% ║
-║  RSI(14): {rsi:.1f} ({rsi_status}){' ' * (40 - len(f'{rsi:.1f} ({rsi_status})'))}║
-║  EMA(20): {format_price(ema20):<20}  EMA(50): {format_price(ema50)} ║
-║  Volume Ratio: {volume_ratio:.2f}x{' ' * (30 - len(f'{volume_ratio:.2f}x'))}║
-╚══════════════════════════════════════════════════════════════════╝
-
-╔══════════════════════════════════════════════════════════════════╗
-║  🎯 STRATEGY LEVELS                                            ║
-╠══════════════════════════════════════════════════════════════════╣
-║  Entry:  {format_price(entry):<20}  Target: {format_price(target)} ║
-║  Stop:   {format_price(stop):<20}  Risk/Reward: 1:{risk_reward:.2f} ║
-╚══════════════════════════════════════════════════════════════════╝
-
-╔══════════════════════════════════════════════════════════════════╗
-║  🤖 PROFESSIONAL AI ANALYSIS                                   ║
-╠══════════════════════════════════════════════════════════════════╣
-{ai_analysis}
-╚══════════════════════════════════════════════════════════════════╝
-
-╔══════════════════════════════════════════════════════════════════╗
-║  📌 KEY LEVELS                                                ║
-╠══════════════════════════════════════════════════════════════════╣
-║  Support:  {format_price(support):<20}  Resistance: {format_price(resistance)} ║
-║  24h High: {format_price(high_24h):<20}  24h Low:  {format_price(low_24h)} ║
-╚══════════════════════════════════════════════════════════════════╝
-
-📚 Resources:
-📖 Full Guide: https://gist.github.com/Matros777/c5d95532248eaaf2b86fd04f8a2753b7
-🐦 Twitter: https://x.com/VitalijMatros
-🌐 OpenX402: https://openx402.ai/projects/0x5b7efd37546d6bb02463339ceaddd80997ac97b3
-
-⚠️  Risk Disclosure: This is NOT financial advice. Always manage risk. Past performance does not guarantee future results.
-"""
-    return result
-
-# ============================================================
-# ЯНДЕКС ФАЙЛ ДЛЯ ВЕРИФИКАЦИИ
+# ЯНДЕКС ВЕРИФИКАЦИЯ
 # ============================================================
 
 @app.get("/yandex_d100e212bdd18c7b.html")
@@ -541,7 +312,7 @@ async def yandex_verify():
     """)
 
 # ============================================================
-# ОСТАЛЬНЫЕ ПЕРЕМЕННЫЕ И ФУНКЦИИ
+# ПЕРЕМЕННЫЕ И ФУНКЦИИ
 # ============================================================
 
 ASI_API_KEY = os.getenv("ASI_API_KEY", "")
@@ -807,14 +578,13 @@ async def verify_tx_payment(tx_hash: str) -> bool:
         paid_tx_cache[tx_hash] = False
         return False
 
-# ПРОКСИ НАСТРАИВАЕТСЯ ЧЕРЕЗ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ (БЕЗ ХАРДКОДА!)
 USE_PROXY = os.getenv("PROXY_ENABLED", "false").lower() == "true"
-PROXY_HOST = os.getenv("PROXY_HOST", "")
-PROXY_PORT = os.getenv("PROXY_PORT", "")
-PROXY_USER = os.getenv("PROXY_USER", "")
-PROXY_PASS = os.getenv("PROXY_PASS", "")
+PROXY_HOST = os.getenv("PROXY_HOST", "152.232.68.111")
+PROXY_PORT = os.getenv("PROXY_PORT", "9920")
+PROXY_USER = os.getenv("PROXY_USER", "PLkfTp")
+PROXY_PASS = os.getenv("PROXY_PASS", "gZNo5z")
 
-if USE_PROXY and PROXY_HOST and PROXY_PORT:
+if USE_PROXY:
     PROXY_URL = f"socks5://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
     logger.info(f"Proxy enabled: {PROXY_HOST}:{PROXY_PORT}")
 else:
@@ -910,12 +680,6 @@ PAYMENT_CONFIG = {
             "extra": {
                 "name": "USD Coin",
                 "version": "2"
-            },
-            "domain": {
-                "name": "USD Coin",
-                "version": "2",
-                "chainId": 8453,
-                "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
             }
         }
     ],
@@ -945,6 +709,53 @@ PAYMENT_CONFIG = {
         }
     }
 }
+
+# ============================================================
+# X402 ОТВЕТ — ИСПРАВЛЕННЫЙ
+# ============================================================
+
+def create_402_response():
+    # Формируем требования к оплате
+    payment_requirements = {
+        "x402Version": 2,
+        "resource": {
+            "url": "https://crypto-snapshot-pro.onrender.com/",
+            "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports all Binance USDT pairs (500+ pairs including BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
+            "mimeType": "application/json"
+        },
+        "accepts": [
+            {
+                "scheme": "exact",
+                "network": "eip155:8453",
+                "amount": "25000",
+                "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
+                "maxTimeoutSeconds": 300,
+                "extra": {"name": "USD Coin", "version": "2"},
+                "domain": {
+                    "name": "USD Coin",
+                    "version": "2",
+                    "chainId": 8453,
+                    "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                }
+            }
+        ]
+    }
+
+    # Кодируем в base64
+    encoded = base64.b64encode(
+        json.dumps(payment_requirements).encode()
+    ).decode()
+
+    logger.info("402 Payment Required sent")
+    return Response(
+        status_code=402,
+        headers={
+            "payment-required": encoded,
+            "Content-Type": "application/json"
+        },
+        content=json.dumps({"paymentRequirements": encoded})
+    )
 
 # ============================================================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
@@ -1228,6 +1039,209 @@ async def payable_endpoint(request: Request):
         )
 
     return {"status": "ok", "message": "Payment verified"}
+
+# ============================================================
+# ГЛАВНЫЙ API
+# ============================================================
+
+@app.post("/")
+async def crypto_snapshot(request: Request):
+    symbol = None
+    tx_hash = None
+
+    try:
+        body = await request.json()
+    except:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    tx_hash = body.get("tx_hash")
+
+    if "message" in body and isinstance(body["message"], dict):
+        symbol = body["message"].get("content", "").strip()
+    elif isinstance(body, dict) and "symbol" in body:
+        symbol = body["symbol"].strip()
+    elif "content" in body:
+        symbol = body["content"].strip()
+    elif "message" in body and isinstance(body["message"], str):
+        symbol = body["message"].strip()
+
+    if not symbol:
+        return AgentResponse(message={
+            "role": "assistant",
+            "content": "📊 CRYPTO SNAPSHOT PRO\n\nSend a symbol to analyze.\n\nExamples:\n• BTC\n• ETH\n• SOL\n• DOGE\n• XRP\n\nUsage: POST {\"symbol\": \"BTC\"}"
+        })
+
+    if tx_hash:
+        logger.info(f"🔍 Verifying tx: {tx_hash}")
+        if not await verify_tx_payment(tx_hash):
+            return Response(
+                content="Payment verification failed. Transaction not found or invalid.",
+                status_code=402
+            )
+        logger.info(f"✅ Tx {tx_hash} verified")
+    else:
+        payment_header = (
+            request.headers.get("x-payment") or
+            request.headers.get("payment-signature")
+        )
+
+        if not payment_header:
+            return create_402_response()
+
+        valid = await verify_and_settle_with_facilitator(payment_header)
+        if not valid:
+            return Response(
+                content="Payment verification failed",
+                status_code=402
+            )
+
+    try:
+        symbol = symbol.upper()
+        symbol = symbol.replace("USDT", "").replace("USD", "").replace("NODE", "")
+        symbol = f"{symbol}USDT"
+
+        ticker = await fetch_ticker(symbol)
+        current_price = float(ticker.get("price", 0))
+        change_24h = float(ticker.get("change", 0))
+        high_24h = float(ticker.get("high", 0))
+        low_24h = float(ticker.get("low", 0))
+
+        if current_price == 0:
+            raise HTTPException(status_code=503, detail="Market data unavailable")
+
+        klines = await fetch_klines(symbol)
+        closes = [k["close"] for k in klines]
+        volumes = [k["volume"] for k in klines]
+
+        rsi = calculate_rsi(closes, 14)
+        ema20 = calculate_ema(closes[-20:], 20) if len(closes) >= 20 else closes[-1]
+        ema50 = calculate_ema(closes[-50:], 50) if len(closes) >= 50 else closes[-1]
+        avg_volume = sum(volumes[-20:]) / 20 if len(volumes) >= 20 else volumes[-1]
+        current_volume = volumes[-1] if volumes else 0
+        volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
+        high_low_range = (high_24h - low_24h) / low_24h if low_24h > 0 else 0
+
+        macd, macd_signal, macd_hist = calculate_macd(closes)
+        bb_upper, bb_middle, bb_lower = calculate_bollinger_bands(closes)
+        rsi_divergence = detect_rsi_divergence(rsi, closes)
+        pivot = calculate_pivot_points(high_24h, low_24h, current_price)
+
+        signal, signal_desc, long_score, short_score = get_signal_from_factors(
+            rsi, ema20, ema50, volume_ratio, high_low_range,
+            macd, macd_signal, macd_hist, bb_upper, bb_middle, bb_lower,
+            rsi_divergence, pivot
+        )
+
+        atr_proxy = high_low_range * current_price
+        support = low_24h
+        resistance = high_24h
+
+        if signal == "LONG":
+            entry = support + (resistance - support) * 0.2
+            target = entry + (entry - support) * 2
+            stop = support - atr_proxy * 0.5
+            risk_reward = (target - entry) / (entry - stop) if entry > stop else 0
+        elif signal == "SHORT":
+            entry = resistance - (resistance - support) * 0.2
+            target = entry - (resistance - entry) * 2
+            stop = resistance + atr_proxy * 0.5
+            risk_reward = (entry - target) / (stop - entry) if stop > entry else 0
+        else:
+            entry = current_price
+            target = current_price * 1.05
+            stop = current_price * 0.95
+            risk_reward = 1.0
+
+        total_score = long_score + short_score
+        conviction = "VERY HIGH" if total_score >= 5 else "HIGH" if total_score >= 4 else "MEDIUM" if total_score >= 3 else "LOW"
+
+        if rsi < 30:
+            rsi_status = "oversold"
+        elif rsi > 70:
+            rsi_status = "overbought"
+        else:
+            rsi_status = "neutral"
+
+        signal_data = {
+            'price': current_price,
+            'change': change_24h,
+            'rsi': rsi,
+            'ema20': ema20,
+            'ema50': ema50,
+            'volume_ratio': volume_ratio,
+            'signal': signal,
+            'conviction': conviction,
+            'entry': entry,
+            'target': target,
+            'stop': stop,
+            'risk_reward': risk_reward,
+            'support': support,
+            'resistance': resistance,
+            'high_24h': high_24h,
+            'low_24h': low_24h,
+            'long_score': long_score,
+            'short_score': short_score
+        }
+
+        ai_analysis = await generate_ai_analysis(symbol, signal_data)
+
+        result = f"""
+╔══════════════════════════════════════════════════════════════════╗
+║  📊 CRYPTO SNAPSHOT PRO — {symbol.replace('USDT', '/USDT')}          ║
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║  🎯 TECHNICAL SIGNAL                                           ║
+╠══════════════════════════════════════════════════════════════════╣
+║  {signal_desc} ║
+║  Conviction: {conviction:<10}  |  Score: {long_score:.1f}🟢LONG / {short_score:.1f}🔴SHORT    ║
+║  Reason: {'Bullish factors dominate.' if long_score > short_score else 'Bearish factors dominate.' if short_score > long_score else 'Mixed signals. Wait for confirmation.'} ║
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║  📈 TECHNICAL INDICATORS                                       ║
+╠══════════════════════════════════════════════════════════════════╣
+║  Price:  {format_price(current_price):<20}  24h Change: {change_24h:+.2f}% ║
+║  RSI(14): {rsi:.1f} ({rsi_status}){' ' * (40 - len(f'{rsi:.1f} ({rsi_status})'))}║
+║  EMA(20): {format_price(ema20):<20}  EMA(50): {format_price(ema50)} ║
+║  Volume Ratio: {volume_ratio:.2f}x{' ' * (30 - len(f'{volume_ratio:.2f}x'))}║
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║  🎯 STRATEGY LEVELS                                            ║
+╠══════════════════════════════════════════════════════════════════╣
+║  Entry:  {format_price(entry):<20}  Target: {format_price(target)} ║
+║  Stop:   {format_price(stop):<20}  Risk/Reward: 1:{risk_reward:.2f} ║
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║  🤖 PROFESSIONAL AI ANALYSIS                                   ║
+╠══════════════════════════════════════════════════════════════════╣
+{ai_analysis}
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║  📌 KEY LEVELS                                                ║
+╠══════════════════════════════════════════════════════════════════╣
+║  Support:  {format_price(support):<20}  Resistance: {format_price(resistance)} ║
+║  24h High: {format_price(high_24h):<20}  24h Low:  {format_price(low_24h)} ║
+╚══════════════════════════════════════════════════════════════════╝
+
+📚 Resources:
+📖 Full Guide: https://gist.github.com/Matros777/c5d95532248eaaf2b86fd04f8a2753b7
+🐦 Twitter: https://x.com/VitalijMatros
+🌐 OpenX402: https://openx402.ai/projects/0x5b7efd37546d6bb02463339ceaddd80997ac97b3
+
+⚠️  Risk Disclosure: This is NOT financial advice. Always manage risk. Past performance does not guarantee future results.
+"""
+
+        return AgentResponse(message={"role": "assistant", "content": result})
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
