@@ -681,7 +681,7 @@ PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com/",
-        "description": "Crypto Snapshot Pro",
+        "description": "Real-time crypto market analysis using 8-factor scoring. Price: $0.025 per request.",
         "mimeType": "application/json"
     },
     "accepts": [
@@ -692,10 +692,6 @@ PAYMENT_CONFIG = {
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
             "maxTimeoutSeconds": 300,
-            "extra": {
-                "name": "USD Coin",
-                "version": "2"
-            },
             "domain": {
                 "name": "USD Coin",
                 "version": "2",
@@ -742,17 +738,13 @@ def encode_payment_config():
 from fastapi.responses import JSONResponse
 
 def create_402_response():
-    envelope = json.dumps(
-        PAYMENT_CONFIG,
-        separators=(",", ":")
-    )
-
+    envelope = json.dumps(PAYMENT_CONFIG, separators=(',', ':'))
     encoded = base64.b64encode(
         envelope.encode("utf-8")
     ).decode("utf-8")
 
     return Response(
-        content=envelope,
+        content=json.dumps(PAYMENT_CONFIG),
         status_code=402,
         media_type="application/json",
         headers={
