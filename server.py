@@ -726,32 +726,7 @@ PAYMENT_CONFIG = {
                 "type": "object",
                 "properties": {
                     "input": {
-                        "type": "object",
-                        "properties": {
-                            "type": {
-                                "type": "string"
-                            },
-                            "method": {
-                                "type": "string"
-                            },
-                            "body": {
-                                "type": "object",
-                                "properties": {
-                                    "symbol": {
-                                        "type": "string"
-                                    }
-                                }
-                            },
-                            "bodyType": {
-                                "type": "string"
-                            }
-                        },
-                        "required": [
-                            "type",
-                            "method",
-                            "body",
-                            "bodyType"
-                        ]
+                        "type": "object"
                     },
                     "output": {
                         "type": "object"
@@ -766,20 +741,18 @@ PAYMENT_CONFIG = {
     }
 }
 
+
 def encode_payment_config():
-    """Кодирует PAYMENT_CONFIG в base64."""
     return base64.b64encode(
-        json.dumps(PAYMENT_CONFIG).encode()
-    ).decode()
+        json.dumps(
+            PAYMENT_CONFIG,
+            separators=(",", ":")
+        ).encode("utf-8")
+    ).decode("utf-8")
 
-
-from fastapi.responses import JSONResponse
 
 def create_402_response():
-    envelope = json.dumps(PAYMENT_CONFIG, separators=(',', ':'))
-    encoded = base64.b64encode(
-        envelope.encode("utf-8")
-    ).decode("utf-8")
+    encoded = encode_payment_config()
 
     return Response(
         content=json.dumps(PAYMENT_CONFIG),
