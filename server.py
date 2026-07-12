@@ -692,14 +692,43 @@ PAYMENT_CONFIG = {
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
             "maxTimeoutSeconds": 300,
-            "domain": {
+            "extra": {
                 "name": "USD Coin",
                 "version": "2",
-                "chainId": 8453,
-                "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                "domain": {
+                    "name": "USD Coin",
+                    "version": "2",
+                    "chainId": 8453,
+                    "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                }
             }
         }
-    ]
+    ],
+    "extensions": {
+        "bazaar": {
+            "info": {
+                "input": {
+                    "type": "http",
+                    "method": "POST",
+                    "body": {},
+                    "bodyType": "json"
+                },
+                "output": {
+                    "type": "json",
+                    "example": {
+                        "message": {
+                            "role": "assistant",
+                            "content": "CRYPTO SNAPSHOT PRO - BTC/USDT..."
+                        }
+                    }
+                }
+            },
+            "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object"
+            }
+        }
+    }
 }
 
 
@@ -713,14 +742,19 @@ def encode_payment_config():
 from fastapi.responses import JSONResponse
 
 def create_402_response():
-    envelope = json.dumps(PAYMENT_CONFIG, separators=(',', ':'))
+    envelope = json.dumps(
+        PAYMENT_CONFIG,
+        separators=(',', ':')
+    )
+
     encoded = base64.b64encode(
         envelope.encode('utf-8')
     ).decode('utf-8')
 
-    return JSONResponse(
-        content=PAYMENT_CONFIG,
+    return Response(
+        content=json.dumps(PAYMENT_CONFIG),
         status_code=402,
+        media_type="application/json",
         headers={
             "payment-required": encoded
         }
