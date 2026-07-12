@@ -305,12 +305,7 @@ async def root(request: Request):
         return RedirectResponse(url="/app")
     
     # Иначе - payment config для x402
-    encoded = encode_payment_config()
-    return Response(
-        status_code=402,
-        headers={"payment-required": encoded},
-        content=json.dumps(PAYMENT_CONFIG)
-    )
+    return create_402_response()
 
 # ============================================================
 # ЯНДЕКС ВЕРИФИКАЦИЯ
@@ -684,13 +679,11 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
 
 PAYMENT_CONFIG = {
     "x402Version": 2,
-
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com/",
         "description": "Real-time crypto market analysis using 8-factor scoring. Price: $0.025 per request.",
         "mimeType": "application/json"
     },
-
     "accepts": [
         {
             "scheme": "exact",
@@ -699,14 +692,15 @@ PAYMENT_CONFIG = {
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
             "maxTimeoutSeconds": 300,
-
-            "extra": {
+            # ⚠️ domain ПРЯМО ВНУТРИ accepts!
+            "domain": {
                 "name": "USD Coin",
-                "version": "2"
+                "version": "2",
+                "chainId": 8453,
+                "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
             }
         }
     ],
-
     "extensions": {
         "bazaar": {
             "info": {
@@ -741,10 +735,8 @@ def encode_payment_config():
     ).decode()
 
 def create_402_response():
-    encoded = base64.b64encode(
-        json.dumps(PAYMENT_CONFIG).encode()
-    ).decode()
-
+    """Создает 402 Payment Required ответ для x402 клиента."""
+    encoded = encode_payment_config()
     return Response(
         status_code=402,
         headers={
