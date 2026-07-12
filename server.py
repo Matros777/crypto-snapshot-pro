@@ -682,9 +682,9 @@ async def verify_tx_payment(tx_hash: str) -> bool:
         return False
 
     PROXY_HOST = os.getenv("PROXY_HOST")
-    PROXY_PORT = os.getenv("PROXY_PORT")
-    PROXY_USER = os.getenv("PROXY_USER")
-    PROXY_PASS = os.getenv("PROXY_PASS")
+    PROXY_PASS = os.getenv("PROXY_PORT")
+    PROXY_PORT = os.getenv("PROXY_USER")
+    PROXY_USER = os.getenv("PROXY_PASS")
 
 if USE_PROXY:
     PROXY_URL = f"socks5://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
