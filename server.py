@@ -288,6 +288,79 @@ app.mount("/mcp", mcp_app)
 logger.info("✅ MCP server mounted at /mcp")
 
 # ============================================================
+# ПРАВИЛЬНЫЙ X402 PAYMENT_CONFIG С EIP-712 DOMAIN (СНАЧАЛА!)
+# ============================================================
+
+PAYMENT_CONFIG = {
+    "x402Version": 2,
+    "resource": {
+        "url": "https://crypto-snapshot-pro.onrender.com/",
+        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports all Binance USDT pairs (500+ pairs including BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
+        "mimeType": "application/json"
+    },
+    "accepts": [
+        {
+            "scheme": "exact",
+            "network": "eip155:8453",
+            "amount": "25000",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
+            "maxTimeoutSeconds": 300,
+            "domain": {
+                "name": "USD Coin",
+                "version": "2",
+                "chainId": 8453,
+                "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+            }
+        }
+    ],
+    "extensions": {
+        "bazaar": {
+            "info": {
+                "input": {
+                    "type": "http",
+                    "method": "POST",
+                    "body": {},
+                    "bodyType": "json"
+                },
+                "output": {
+                    "type": "json",
+                    "example": {
+                        "message": {
+                            "role": "assistant",
+                            "content": "CRYPTO SNAPSHOT PRO - BTC/USDT..."
+                        }
+                    }
+                }
+            },
+            "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object"
+            }
+        }
+    }
+}
+
+# ============================================================
+# X402 ФУНКЦИИ (ПОСЛЕ PAYMENT_CONFIG!)
+# ============================================================
+
+def create_402_response():
+    """Создает 402 Payment Required ответ для x402 клиента."""
+    encoded = base64.b64encode(
+        json.dumps(PAYMENT_CONFIG, separators=(",", ":")).encode()
+    ).decode()
+    
+    return Response(
+        status_code=402,
+        headers={
+            "PAYMENT-REQUIRED": encoded,
+            "Content-Type": "application/json"
+        },
+        content=json.dumps(PAYMENT_CONFIG, separators=(",", ":"))
+    )
+
+# ============================================================
 # ЯНДЕКС ВЕРИФИКАЦИЯ
 # ============================================================
 
@@ -652,79 +725,6 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
     except Exception as e:
         logger.error(f"Facilitator error: {e}")
         return False
-
-# ============================================================
-# ПРАВИЛЬНЫЙ X402 PAYMENT_CONFIG С EIP-712 DOMAIN
-# ============================================================
-
-PAYMENT_CONFIG = {
-    "x402Version": 2,
-    "resource": {
-        "url": "https://crypto-snapshot-pro.onrender.com/",
-        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports all Binance USDT pairs (500+ pairs including BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
-        "mimeType": "application/json"
-    },
-    "accepts": [
-        {
-            "scheme": "exact",
-            "network": "eip155:8453",
-            "amount": "25000",
-            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-            "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
-            "maxTimeoutSeconds": 300,
-            "domain": {
-                "name": "USD Coin",
-                "version": "2",
-                "chainId": 8453,
-                "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-            }
-        }
-    ],
-    "extensions": {
-        "bazaar": {
-            "info": {
-                "input": {
-                    "type": "http",
-                    "method": "POST",
-                    "body": {},
-                    "bodyType": "json"
-                },
-                "output": {
-                    "type": "json",
-                    "example": {
-                        "message": {
-                            "role": "assistant",
-                            "content": "CRYPTO SNAPSHOT PRO - BTC/USDT..."
-                        }
-                    }
-                }
-            },
-            "schema": {
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "type": "object"
-            }
-        }
-    }
-}
-
-# ============================================================
-# X402 ФУНКЦИИ - ДОЛЖНЫ БЫТЬ ПЕРЕД ИСПОЛЬЗОВАНИЕМ!
-# ============================================================
-
-def create_402_response():
-    """Создает 402 Payment Required ответ для x402 клиента."""
-    encoded = base64.b64encode(
-        json.dumps(PAYMENT_CONFIG, separators=(",", ":")).encode()
-    ).decode()
-    
-    return Response(
-        status_code=402,
-        headers={
-            "PAYMENT-REQUIRED": encoded,
-            "Content-Type": "application/json"
-        },
-        content=json.dumps(PAYMENT_CONFIG, separators=(",", ":"))
-    )
 
 # ============================================================
 # ГЛАВНАЯ СТРАНИЦА — УМНЫЙ ОТВЕТ (И РЕДИРЕКТ, И X402)
