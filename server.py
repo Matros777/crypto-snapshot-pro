@@ -710,13 +710,16 @@ def encode_payment_config():
     ).decode()
 
 
+from fastapi.responses import JSONResponse
+
 def create_402_response():
-    """Использует ПОЛНЫЙ PAYMENT_CONFIG"""
     envelope = json.dumps(PAYMENT_CONFIG, separators=(',', ':'))
-    encoded = base64.b64encode(envelope.encode('utf-8')).decode('utf-8')
-   
-    return Response(
-        content="Payment Required",
+    encoded = base64.b64encode(
+        envelope.encode('utf-8')
+    ).decode('utf-8')
+
+    return JSONResponse(
+        content=PAYMENT_CONFIG,
         status_code=402,
         headers={
             "payment-required": encoded
