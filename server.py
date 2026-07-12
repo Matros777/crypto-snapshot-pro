@@ -681,7 +681,7 @@ PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com/",
-        "description": "Real-time crypto market analysis using 8-factor scoring. Price: $0.025 per request.",
+        "description": "Crypto Snapshot Pro",
         "mimeType": "application/json"
     },
     "accepts": [
@@ -699,32 +699,7 @@ PAYMENT_CONFIG = {
                 "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
             }
         }
-    ],
-    "extensions": {
-        "bazaar": {
-            "info": {
-                "input": {
-                    "type": "http",
-                    "method": "POST",
-                    "body": {},
-                    "bodyType": "json"
-                },
-                "output": {
-                    "type": "json",
-                    "example": {
-                        "message": {
-                            "role": "assistant",
-                            "content": "CRYPTO SNAPSHOT PRO - BTC/USDT..."
-                        }
-                    }
-                }
-            },
-            "schema": {
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "type": "object"
-            }
-        }
-    }
+    ]
 }
 
 
