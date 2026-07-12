@@ -701,7 +701,7 @@ PAYMENT_CONFIG = {
             "maxTimeoutSeconds": 300,
 
             # EIP-712 domain для USDC EIP-3009
-            "domain": {
+            "extra": {
                 "name": "USD Coin",
                 "version": "2",
                 "chainId": 8453,
