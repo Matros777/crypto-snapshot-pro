@@ -36,22 +36,20 @@ logger = logging.getLogger("crypto-snapshot")
 # ПРОВЕРКА ТОКЕНА AGENTIC MARKET
 # ============================================================
 
-AGENTIC_TOKEN = os.getenv("AGENTIC_TOKEN", "")
+AGENTICMARKET_SECRET = os.getenv("AGENTICMARKET_SECRET", "")
 
 def verify_agentic_token(request: Request) -> bool:
-    if not AGENTIC_TOKEN:
+    if not AGENTICMARKET_SECRET:
         return True
     
-    auth_header = request.headers.get("Authorization", "")
-    token = auth_header.replace("Bearer ", "").strip()
-    x_api_key = request.headers.get("X-API-Key", "")
-    agentic_header = request.headers.get("x-agentic-token", "")
-    agentic_header2 = request.headers.get("X-Agentic-Token", "")
+    # ⚠️ ПРАВИЛЬНЫЙ ЗАГОЛОВОК ДЛЯ AGENTIC MARKET!
+    secret = request.headers.get("x-agenticmarket-secret", "")
     
-    return (token == AGENTIC_TOKEN or 
-            x_api_key == AGENTIC_TOKEN or 
-            agentic_header == AGENTIC_TOKEN or
-            agentic_header2 == AGENTIC_TOKEN)
+    # ДЛЯ ОТЛАДКИ
+    logger.info(f"🔍 Secret from header: {secret[:15] if secret else 'None'}...")
+    logger.info(f"🔍 Expected secret: {AGENTICMARKET_SECRET[:15]}...")
+    
+    return secret == AGENTICMARKET_SECRET
 
 # ============================================================
 # СОЗДАЕМ ГЛАВНОЕ ПРИЛОЖЕНИЕ
