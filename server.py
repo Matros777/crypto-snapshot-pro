@@ -741,15 +741,19 @@ def encode_payment_config():
     ).decode()
 
 def create_402_response():
-    """Создает 402 Payment Required ответ для POST запросов."""
-    encoded = encode_payment_config()
+
+    encoded = base64.b64encode(
+        json.dumps(PAYMENT_CONFIG).encode("utf-8")
+    ).decode("utf-8")
+
+    logger.info("402 Payment Required sent")
+
     return Response(
         status_code=402,
         headers={
-            "payment-required": encoded,
-            "Content-Type": "application/json"
+            "payment-required": encoded
         },
-        content=json.dumps({"paymentRequirements": encoded})
+        content="Payment Required"
     )
 
 # ============================================================
