@@ -288,26 +288,6 @@ app.mount("/mcp", mcp_app)
 logger.info("✅ MCP server mounted at /mcp")
 
 # ============================================================
-# ГЛАВНАЯ СТРАНИЦА — УМНЫЙ ОТВЕТ (И РЕДИРЕКТ, И X402)
-# ============================================================
-
-@app.get("/")
-async def root(request: Request):
-    """
-    GET запрос на корень:
-    - Браузер (text/html) -> редирект на /app
-    - x402 (application/json) -> 402 Payment Required
-    """
-    accept_header = request.headers.get("accept", "")
-    
-    # Если браузер хочет HTML - редирект
-    if "text/html" in accept_header:
-        return RedirectResponse(url="/app")
-    
-    # Иначе - 402 Payment Required для x402
-    return create_402_response()
-
-# ============================================================
 # ЯНДЕКС ВЕРИФИКАЦИЯ
 # ============================================================
 
@@ -728,7 +708,7 @@ PAYMENT_CONFIG = {
 }
 
 # ============================================================
-# X402 ФУНКЦИИ
+# X402 ФУНКЦИИ - ДОЛЖНЫ БЫТЬ ПЕРЕД ИСПОЛЬЗОВАНИЕМ!
 # ============================================================
 
 def create_402_response():
@@ -740,11 +720,31 @@ def create_402_response():
     return Response(
         status_code=402,
         headers={
-            "PAYMENT-REQUIRED": encoded,  # ⚠️ CAPS!
+            "PAYMENT-REQUIRED": encoded,
             "Content-Type": "application/json"
         },
         content=json.dumps(PAYMENT_CONFIG, separators=(",", ":"))
     )
+
+# ============================================================
+# ГЛАВНАЯ СТРАНИЦА — УМНЫЙ ОТВЕТ (И РЕДИРЕКТ, И X402)
+# ============================================================
+
+@app.get("/")
+async def root(request: Request):
+    """
+    GET запрос на корень:
+    - Браузер (text/html) -> редирект на /app
+    - x402 (application/json) -> 402 Payment Required
+    """
+    accept_header = request.headers.get("accept", "")
+    
+    # Если браузер хочет HTML - редирект
+    if "text/html" in accept_header:
+        return RedirectResponse(url="/app")
+    
+    # Иначе - 402 Payment Required для x402
+    return create_402_response()
 
 # ============================================================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
