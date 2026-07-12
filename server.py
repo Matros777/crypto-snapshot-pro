@@ -288,10 +288,10 @@ app.mount("/mcp", mcp_app)
 logger.info("✅ MCP server mounted at /mcp")
 
 # ============================================================
-# ПРАВИЛЬНЫЙ X402 PAYMENT_CONFIG С EIP-712 DOMAIN
+# БАЗОВЫЙ PAYMENT_CONFIG (БЕЗ DOMAIN/EXTRA)
 # ============================================================
 
-PAYMENT_CONFIG = {
+PAYMENT_CONFIG_BASE = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com/",
@@ -305,14 +305,7 @@ PAYMENT_CONFIG = {
             "amount": "25000",
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
-            "maxTimeoutSeconds": 300,
-            # ⚠️ @x402/fetch ищет domain, а не eip712Domain!
-            "domain": {
-                "name": "USD Coin",
-                "version": "2",
-                "chainId": 8453,
-                "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-            }
+            "maxTimeoutSeconds": 300
         }
     ],
     "extensions": {
@@ -341,14 +334,22 @@ PAYMENT_CONFIG = {
         }
     }
 }
+
 # ============================================================
-# X402 ФУНКЦИИ (ДОЛЖНЫ БЫТЬ ДО root!)
+# X402 ОТВЕТЫ - РАЗНЫЕ ДЛЯ РАЗНЫХ КЛИЕНТОВ
 # ============================================================
 
-def create_402_response():
-    """Создает 402 Payment Required ответ для x402 клиента."""
+def create_402_response_for_agentic():
+    """Для Agentic Market / Bazaar Discovery - domain в корне"""
+    config = PAYMENT_CONFIG_BASE.copy()
+    config["domain"] = {
+        "name": "USD Coin",
+        "version": "2",
+        "chainId": 8453,
+        "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    }
     encoded = base64.b64encode(
-        json.dumps(PAYMENT_CONFIG, separators=(",", ":")).encode()
+        json.dumps(config, separators=(",", ":")).encode()
     ).decode()
     
     return Response(
@@ -357,11 +358,31 @@ def create_402_response():
             "PAYMENT-REQUIRED": encoded,
             "Content-Type": "application/json"
         },
-        content=json.dumps(PAYMENT_CONFIG, separators=(",", ":"))
+        content=json.dumps(config, separators=(",", ":"))
+    )
+
+def create_402_response_for_script():
+    """Для нашего скрипта (@x402/fetch) - extra внутри accepts"""
+    config = PAYMENT_CONFIG_BASE.copy()
+    config["accepts"][0]["extra"] = {
+        "name": "USD Coin",
+        "version": "2"
+    }
+    encoded = base64.b64encode(
+        json.dumps(config, separators=(",", ":")).encode()
+    ).decode()
+    
+    return Response(
+        status_code=402,
+        headers={
+            "PAYMENT-REQUIRED": encoded,
+            "Content-Type": "application/json"
+        },
+        content=json.dumps(config, separators=(",", ":"))
     )
 
 # ============================================================
-# ГЛАВНАЯ СТРАНИЦА — УМНЫЙ ОТВЕТ (И РЕДИРЕКТ, И X402)
+# ГЛАВНАЯ СТРАНИЦА — УМНЫЙ ОТВЕТ
 # ============================================================
 
 @app.get("/")
@@ -369,16 +390,16 @@ async def root(request: Request):
     """
     GET запрос на корень:
     - Браузер (text/html) -> редирект на /app
-    - x402 (application/json) -> 402 Payment Required
+    - Agentic Market (application/json) -> 402 с domain в корне
     """
     accept_header = request.headers.get("accept", "")
     
-    # Если браузер хочет HTML - редирект
+    # Браузер → веб-интерфейс
     if "text/html" in accept_header:
         return RedirectResponse(url="/app")
     
-    # Иначе - 402 Payment Required для x402
-    return create_402_response()
+    # Agentic Market / Bazaar → domain в корне
+    return create_402_response_for_agentic()
 
 # ============================================================
 # ЯНДЕКС ВЕРИФИКАЦИЯ
@@ -696,7 +717,7 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         logger.error(f"Failed to decode payment payload: {e}")
         return False
 
-    requirements = PAYMENT_CONFIG["accepts"][0]
+    requirements = PAYMENT_CONFIG_BASE["accepts"][0]
 
     try:
         async with httpx.AsyncClient(timeout=20) as client:
@@ -1018,7 +1039,7 @@ async def payable_endpoint(request: Request):
         request.headers.get("payment-signature")
     )
     if not payment_header:
-        return create_402_response()
+        return create_402_response_for_script()
 
     valid = await verify_and_settle_with_facilitator(payment_header)
     if not valid:
@@ -1041,12 +1062,11 @@ async def crypto_snapshot(request: Request):
     try:
         body = await request.json()
     except:
-        return create_402_response()  # ❌ НЕПРАВИЛЬНО! ДОЛЖЕН БЫТЬ 400
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
     
     # ПРОВЕРЯЕМ СИМВОЛ
     symbol = body.get("symbol", "").strip()
     if not symbol:
-        # Возвращаем подсказку
         return AgentResponse(message={
             "role": "assistant",
             "content": "📊 CRYPTO SNAPSHOT PRO\n\nSend a symbol to analyze.\n\nExamples:\n• BTC\n• ETH\n• SOL\n• DOGE\n• XRP\n\nUsage: POST {\"symbol\": \"BTC\"}"
@@ -1082,9 +1102,9 @@ async def crypto_snapshot(request: Request):
         result = await generate_signal(symbol)
         return AgentResponse(message={"role": "assistant", "content": result})
     
-    # НЕТ ПЛАТЕЖА — 402
-    logger.info("⚠️ No payment, returning 402")
-    return create_402_response()
+    # НЕТ ПЛАТЕЖА — 402 ДЛЯ СКРИПТА (с extra)
+    logger.info("⚠️ No payment, returning 402 for script")
+    return create_402_response_for_script()
 
 # ============================================================
 # ГЕНЕРАЦИЯ СИГНАЛА
