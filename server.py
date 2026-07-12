@@ -701,10 +701,70 @@ PAYMENT_CONFIG = {
         }
     ],
     "extensions": {
-        "bazaar": {}
+        "bazaar": {
+            "info": {
+                "input": {
+                    "type": "http",
+                    "method": "POST",
+                    "body": {
+                        "symbol": "BTC"
+                    },
+                    "bodyType": "json"
+                },
+                "output": {
+                    "type": "json",
+                    "example": {
+                        "message": {
+                            "role": "assistant",
+                            "content": "CRYPTO SNAPSHOT PRO analysis"
+                        }
+                    }
+                }
+            },
+            "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                    "input": {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string"
+                            },
+                            "method": {
+                                "type": "string"
+                            },
+                            "body": {
+                                "type": "object",
+                                "properties": {
+                                    "symbol": {
+                                        "type": "string"
+                                    }
+                                }
+                            },
+                            "bodyType": {
+                                "type": "string"
+                            }
+                        },
+                        "required": [
+                            "type",
+                            "method",
+                            "body",
+                            "bodyType"
+                        ]
+                    },
+                    "output": {
+                        "type": "object"
+                    }
+                },
+                "required": [
+                    "input",
+                    "output"
+                ]
+            }
+        }
     }
 }
-
 
 def encode_payment_config():
     """Кодирует PAYMENT_CONFIG в base64."""
