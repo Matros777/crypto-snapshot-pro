@@ -340,6 +340,22 @@ async def mcp_health(request: Request):
 
 app.mount("/mcp", mcp_app)
 logger.info("✅ MCP server mounted at /mcp")
+# В КОНЦЕ ФАЙЛА, ПОСЛЕ app.mount
+app.mount("/mcp", mcp_app)
+logger.info("✅ MCP server mounted at /mcp")
+
+# ✅ ДОБАВЛЯЕМ ПЕРЕНАПРАВЛЕНИЕ ДЛЯ /mcp БЕЗ СЛЕША
+@app.get("/mcp")
+async def mcp_root_no_slash(request: Request):
+    return await mcp_root(request)
+
+@app.post("/mcp")
+async def mcp_handler_no_slash(request: Request):
+    return await mcp_handler(request)
+
+@app.get("/mcp/health")
+async def mcp_health_no_slash(request: Request):
+    return await mcp_health(request)
 
 # ============================================================
 # БАЗОВЫЙ PAYMENT_CONFIG (БЕЗ DOMAIN/EXTRA)
