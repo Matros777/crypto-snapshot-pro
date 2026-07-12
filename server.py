@@ -306,8 +306,8 @@ PAYMENT_CONFIG = {
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
             "maxTimeoutSeconds": 300,
-            # ⚠️ @x402/fetch ищет eip712Domain, а не domain!
-            "eip712Domain": {
+            # ⚠️ @x402/fetch ищет domain, а не eip712Domain!
+            "domain": {
                 "name": "USD Coin",
                 "version": "2",
                 "chainId": 8453,
