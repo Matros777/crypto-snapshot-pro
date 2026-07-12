@@ -95,50 +95,6 @@ mcp_app = _FastAPI(title="MCP Server")
 # MCP ЭНДПОИНТЫ
 # ============================================================
 
-@mcp_app.get("/")
-async def mcp_root(request: Request):
-    if AGENTICMARKET_SECRET and not verify_agentic_token(request):
-        return JSONResponse(
-            status_code=401,
-            content={
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -32001,
-                    "message": "Unauthorized: Invalid AgenticMarket token"
-                }
-            }
-        )
-    
-    return {
-        "jsonrpc": "2.0",
-        "result": {
-            "name": "Crypto Snapshot Pro",
-            "version": "1.0.0",
-            "protocol": "streamable-http",
-            "tools": [
-                {
-                    "name": "crypto_snapshot",
-                    "description": "Get AI crypto analysis for any symbol",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "symbol": {"type": "string", "description": "Cryptocurrency symbol (BTC, ETH, SOL, etc.)"}
-                        },
-                        "required": ["symbol"]
-                    }
-                },
-                {
-                    "name": "get_supported_pairs",
-                    "description": "Get list of supported crypto pairs",
-                    "inputSchema": {"type": "object", "properties": {}}
-                }
-            ],
-            "price": "0.025 USDC",
-            "network": "Base",
-            "pay_to": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3"
-        }
-    }
-
 @mcp_app.post("/")
 async def mcp_handler(request: Request):
     if AGENTICMARKET_SECRET and not verify_agentic_token(request):
@@ -312,19 +268,6 @@ async def mcp_health(request: Request):
 
 app.mount("/mcp", mcp_app)
 logger.info("✅ MCP server mounted at /mcp")
-
-# ✅ ПЕРЕНАПРАВЛЕНИЕ ДЛЯ /mcp БЕЗ СЛЕША
-@app.get("/mcp")
-async def mcp_root_no_slash(request: Request):
-    return await mcp_root(request)
-
-@app.post("/mcp")
-async def mcp_handler_no_slash(request: Request):
-    return await mcp_handler(request)
-
-@app.get("/mcp/health")
-async def mcp_health_no_slash(request: Request):
-    return await mcp_health(request)
 # ============================================================
 # БАЗОВЫЙ PAYMENT_CONFIG (БЕЗ DOMAIN/EXTRA)
 # ============================================================
