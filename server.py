@@ -727,26 +727,26 @@ PAYMENT_CONFIG = {
     }
 }
 
+
 def encode_payment_config():
     """Кодирует PAYMENT_CONFIG в base64."""
     return base64.b64encode(
         json.dumps(PAYMENT_CONFIG).encode()
     ).decode()
 
+
 def create_402_response():
-    config = {
-        "x402Version": 2,
-        "accepts": [
-            {
-                "scheme": "exact",
-                "network": "eip155:8453",
-                "amount": "25000",
-                "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-                "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
-                "maxTimeoutSeconds": 300
-            }
-        ]
-    }
+    """Использует ПОЛНЫЙ PAYMENT_CONFIG"""
+    envelope = json.dumps(PAYMENT_CONFIG, separators=(',', ':'))
+    encoded = base64.b64encode(envelope.encode('utf-8')).decode('utf-8')
+    
+    return Response(
+        content="Payment Required",
+        status_code=402,
+        headers={
+            "payment-required": encoded
+        }
+    )
     encoded = base64.b64encode(json.dumps(config).encode('utf-8')).decode('utf-8')
     return Response(
         content="Payment Required",
