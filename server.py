@@ -750,7 +750,8 @@ def create_402_response():
         headers={
             "Payment-Required": encoded
         },
-        content=""
+        content=json.dumps(PAYMENT_CONFIG),
+        media_type="application/json"
     )
 
 # ============================================================
