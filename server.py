@@ -69,7 +69,7 @@ mcp_app = _FastAPI(title="MCP Server")
 
 @mcp_app.get("/")
 async def mcp_root(request: Request):
-    if AGENTIC_TOKEN and not verify_agentic_token(request):
+    if AGENTICMARKET_SECRET and not verify_agentic_token(request):
         return JSONResponse(
             status_code=401,
             content={
@@ -113,7 +113,7 @@ async def mcp_root(request: Request):
 
 @mcp_app.post("/")
 async def mcp_handler(request: Request):
-    if AGENTIC_TOKEN and not verify_agentic_token(request):
+    if AGENTICMARKET_SECRET and not verify_agentic_token(request):
         return {
             "jsonrpc": "2.0",
             "id": 1,
@@ -275,7 +275,7 @@ async def mcp_handler(request: Request):
 
 @mcp_app.get("/health")
 async def mcp_health(request: Request):
-    if AGENTIC_TOKEN and not verify_agentic_token(request):
+    if AGENTICMARKET_SECRET and not verify_agentic_token(request):
         return JSONResponse(
             status_code=401,
             content={"status": "unauthorized", "message": "Invalid token"}
@@ -681,11 +681,10 @@ async def verify_tx_payment(tx_hash: str) -> bool:
         paid_tx_cache[tx_hash] = False
         return False
 
-USE_PROXY = os.getenv("PROXY_ENABLED", "false").lower() == "true"
-PROXY_HOST = os.getenv("PROXY_HOST", "152.232.68.111")
-PROXY_PORT = os.getenv("PROXY_PORT", "9920")
-PROXY_USER = os.getenv("PROXY_USER", "PLkfTp")
-PROXY_PASS = os.getenv("PROXY_PASS", "gZNo5z")
+    PROXY_HOST = os.getenv("PROXY_HOST")
+    PROXY_PORT = os.getenv("PROXY_PORT")
+    PROXY_USER = os.getenv("PROXY_USER")
+    PROXY_PASS = os.getenv("PROXY_PASS")
 
 if USE_PROXY:
     PROXY_URL = f"socks5://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
