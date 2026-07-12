@@ -45,11 +45,41 @@ def verify_agentic_token(request: Request) -> bool:
     # ⚠️ ПРАВИЛЬНЫЙ ЗАГОЛОВОК ДЛЯ AGENTIC MARKET!
     secret = request.headers.get("x-agenticmarket-secret", "")
     
-    # ДЛЯ ОТЛАДКИ
-    logger.info(f"🔍 Secret from header: {secret[:15] if secret else 'None'}...")
-    logger.info(f"🔍 Expected secret: {AGENTICMARKET_SECRET[:15]}...")
+    def verify_agentic_token(request: Request) -> bool:
+    if not AGENTICMARKET_SECRET:
+        logger.info("ℹ️ AGENTICMARKET_SECRET not set, skipping auth")
+        return True
     
-    return secret == AGENTICMARKET_SECRET
+    # ЛОГИРУЕМ ВСЕ ЗАГОЛОВКИ!
+    logger.info(f"🔍 ALL HEADERS: {dict(request.headers)}")
+    
+    # ПРОВЕРЯЕМ ВСЕ ВОЗМОЖНЫЕ ЗАГОЛОВКИ
+    secret_from_header = request.headers.get("x-agenticmarket-secret", "")
+    secret_from_proxy = request.headers.get("x-agentic-proxy-secret", "")
+    auth_header = request.headers.get("authorization", "")
+    api_key = request.headers.get("x-api-key", "")
+    
+    # ЛОГИРУЕМ КАЖДЫЙ
+    logger.info(f"🔍 x-agenticmarket-secret: {secret_from_header[:20] if secret_from_header else 'None'}...")
+    logger.info(f"🔍 x-agentic-proxy-secret: {secret_from_proxy[:20] if secret_from_proxy else 'None'}...")
+    logger.info(f"🔍 authorization: {auth_header[:20] if auth_header else 'None'}...")
+    logger.info(f"🔍 x-api-key: {api_key[:20] if api_key else 'None'}...")
+    logger.info(f"🔍 Expected: {AGENTICMARKET_SECRET[:20] if AGENTICMARKET_SECRET else 'None'}...")
+    
+    # ПРОВЕРЯЕМ ВСЕ
+    is_valid = (
+        secret_from_header == AGENTICMARKET_SECRET or
+        secret_from_proxy == AGENTICMARKET_SECRET or
+        auth_header.replace("Bearer ", "") == AGENTICMARKET_SECRET or
+        api_key == AGENTICMARKET_SECRET
+    )
+    
+    if not is_valid:
+        logger.warning("❌ Unauthorized: Invalid AgenticMarket token")
+    else:
+        logger.info("✅ Auth passed")
+    
+    return is_valid
 
 # ============================================================
 # СОЗДАЕМ ГЛАВНОЕ ПРИЛОЖЕНИЕ
