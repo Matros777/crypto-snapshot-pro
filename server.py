@@ -679,28 +679,19 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
 
 PAYMENT_CONFIG = {
     "x402Version": 2,
-
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com/",
         "description": "Real-time crypto market analysis using 8-factor scoring. Price: $0.025 per request.",
         "mimeType": "application/json"
     },
-
     "accepts": [
         {
             "scheme": "exact",
             "network": "eip155:8453",
             "amount": "25000",
-
-            # USDC Base Mainnet
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-
-            # кошелек получателя
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
-
             "maxTimeoutSeconds": 300,
-
-            # EIP-712 domain для USDC EIP-3009
             "domain": {
                 "name": "USD Coin",
                 "version": "2",
@@ -709,7 +700,6 @@ PAYMENT_CONFIG = {
             }
         }
     ],
-
     "extensions": {
         "bazaar": {
             "info": {
@@ -729,7 +719,6 @@ PAYMENT_CONFIG = {
                     }
                 }
             },
-
             "schema": {
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "object"
