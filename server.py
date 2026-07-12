@@ -40,13 +40,6 @@ AGENTICMARKET_SECRET = os.getenv("AGENTICMARKET_SECRET", "")
 
 def verify_agentic_token(request: Request) -> bool:
     if not AGENTICMARKET_SECRET:
-        return True
-    
-    # ⚠️ ПРАВИЛЬНЫЙ ЗАГОЛОВОК ДЛЯ AGENTIC MARKET!
-    secret = request.headers.get("x-agenticmarket-secret", "")
-    
-    def verify_agentic_token(request: Request) -> bool:
-    if not AGENTICMARKET_SECRET:
         logger.info("ℹ️ AGENTICMARKET_SECRET not set, skipping auth")
         return True
     
@@ -81,6 +74,7 @@ def verify_agentic_token(request: Request) -> bool:
     
     return is_valid
 
+
 # ============================================================
 # СОЗДАЕМ ГЛАВНОЕ ПРИЛОЖЕНИЕ
 # ============================================================
@@ -98,54 +92,12 @@ from fastapi import FastAPI as _FastAPI
 mcp_app = _FastAPI(title="MCP Server")
 
 # ============================================================
-# ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ПРОВЕРКИ ТОКЕНА
-# ============================================================
-
-async def check_mcp_auth(request: Request) -> tuple[bool, Optional[dict]]:
-    """Проверяет авторизацию MCP запроса. Возвращает (is_valid, body_or_error)"""
-    
-    if not AGENTICMARKET_SECRET:
-        return True, None
-    
-    # Проверяем заголовок
-    secret_from_header = request.headers.get("x-agenticmarket-secret", "")
-    
-    # Проверяем тело запроса (только для POST)
-    body = None
-    secret_from_body = None
-    if request.method == "POST":
-        try:
-            body = await request.json()
-            # Ищем в _meta.agentic.agenticProxySecret
-            secret_from_body = body.get("_meta", {}).get("agentic", {}).get("agenticProxySecret")
-            if not secret_from_body:
-                # Альтернативное место
-                secret_from_body = body.get("params", {}).get("_meta", {}).get("agentic", {}).get("agenticProxySecret")
-        except:
-            pass
-    
-    # Логируем
-    logger.info(f"🔍 Header secret: {secret_from_header[:15] if secret_from_header else 'None'}...")
-    if secret_from_body:
-        logger.info(f"🔍 Body secret: {secret_from_body[:15] if secret_from_body else 'None'}...")
-    
-    # Проверяем
-    is_valid = (secret_from_header == AGENTICMARKET_SECRET) or (secret_from_body == AGENTICMARKET_SECRET)
-    
-    if not is_valid and AGENTICMARKET_SECRET:
-        logger.warning("❌ Unauthorized: Invalid AgenticMarket token")
-        return False, body
-    
-    return True, body
-
-# ============================================================
 # MCP ЭНДПОИНТЫ
 # ============================================================
 
 @mcp_app.get("/")
 async def mcp_root(request: Request):
-    is_valid, _ = await check_mcp_auth(request)
-    if not is_valid:
+    if AGENTICMARKET_SECRET and not verify_agentic_token(request):
         return JSONResponse(
             status_code=401,
             content={
@@ -189,26 +141,18 @@ async def mcp_root(request: Request):
 
 @mcp_app.post("/")
 async def mcp_handler(request: Request):
-    # ПРОВЕРЯЕМ АВТОРИЗАЦИЮ
-    is_valid, body = await check_mcp_auth(request)
-    if not is_valid:
+    if AGENTICMARKET_SECRET and not verify_agentic_token(request):
         return {
             "jsonrpc": "2.0",
-            "id": body.get("id", 1) if body else 1,
+            "id": 1,
             "error": {
                 "code": -32001,
                 "message": "Unauthorized: Invalid AgenticMarket token"
             }
         }
     
-    # ЕСЛИ ТЕЛА НЕТ - ПОЛУЧАЕМ
-    if body is None:
-        try:
-            body = await request.json()
-        except:
-            body = {}
-    
     try:
+        body = await request.json()
         method = body.get("method", "")
         params = body.get("params", {})
         request_id = body.get("id")
@@ -351,17 +295,15 @@ async def mcp_handler(request: Request):
         }
         
     except Exception as e:
-        logger.error(f"MCP handler error: {e}")
         return {
             "jsonrpc": "2.0",
-            "id": body.get("id", 1) if body else 1,
+            "id": body.get("id", 1) if 'body' in locals() else 1,
             "error": {"code": -32000, "message": str(e)}
         }
 
 @mcp_app.get("/health")
 async def mcp_health(request: Request):
-    is_valid, _ = await check_mcp_auth(request)
-    if not is_valid:
+    if AGENTICMARKET_SECRET and not verify_agentic_token(request):
         return JSONResponse(
             status_code=401,
             content={"status": "unauthorized", "message": "Invalid token"}
@@ -370,11 +312,8 @@ async def mcp_health(request: Request):
 
 app.mount("/mcp", mcp_app)
 logger.info("✅ MCP server mounted at /mcp")
-# В КОНЦЕ ФАЙЛА, ПОСЛЕ app.mount
-app.mount("/mcp", mcp_app)
-logger.info("✅ MCP server mounted at /mcp")
 
-# ✅ ДОБАВЛЯЕМ ПЕРЕНАПРАВЛЕНИЕ ДЛЯ /mcp БЕЗ СЛЕША
+# ✅ ПЕРЕНАПРАВЛЕНИЕ ДЛЯ /mcp БЕЗ СЛЕША
 @app.get("/mcp")
 async def mcp_root_no_slash(request: Request):
     return await mcp_root(request)
@@ -386,7 +325,6 @@ async def mcp_handler_no_slash(request: Request):
 @app.get("/mcp/health")
 async def mcp_health_no_slash(request: Request):
     return await mcp_health(request)
-
 # ============================================================
 # БАЗОВЫЙ PAYMENT_CONFIG (БЕЗ DOMAIN/EXTRA)
 # ============================================================
