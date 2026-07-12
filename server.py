@@ -727,7 +727,12 @@ PAYMENT_CONFIG = {
     }
 }
 
+# ============================================================
+# X402 ФУНКЦИИ
+# ============================================================
+
 def create_402_response():
+    """Создает 402 Payment Required ответ для x402 клиента."""
     encoded = base64.b64encode(
         json.dumps(PAYMENT_CONFIG, separators=(",", ":")).encode()
     ).decode()
@@ -735,7 +740,7 @@ def create_402_response():
     return Response(
         status_code=402,
         headers={
-            "payment-required": encoded,
+            "PAYMENT-REQUIRED": encoded,  # ⚠️ CAPS!
             "Content-Type": "application/json"
         },
         content=json.dumps(PAYMENT_CONFIG, separators=(",", ":"))
@@ -1025,20 +1030,19 @@ async def payable_endpoint(request: Request):
     return {"status": "ok", "message": "Payment verified"}
 
 # ============================================================
-# ГЛАВНЫЙ API — POST ОБРАБОТЧИК (ПОДДЕРЖИВАЕТ И tx_hash, И x-payment)
+# ГЛАВНЫЙ API — POST ОБРАБОТЧИК
 # ============================================================
 
 @app.post("/")
 async def crypto_snapshot(request: Request):
-    """POST — проверяет платеж (tx_hash или x-payment) и возвращает анализ."""
+    """POST — проверяет платеж и возвращает анализ."""
     
-    # 1. ПРОВЕРЯЕМ ТЕЛО ЗАПРОСА
     try:
         body = await request.json()
     except:
         raise HTTPException(status_code=400, detail="Invalid JSON body")
     
-    # 2. ПРОВЕРЯЕМ tx_hash (ДЛЯ ВЕБ-ИНТЕРФЕЙСА)
+    # Проверяем tx_hash (для веб-интерфейса)
     tx_hash = body.get("tx_hash")
     if tx_hash:
         logger.info(f"🔍 Verifying tx: {tx_hash}")
@@ -1052,7 +1056,7 @@ async def crypto_snapshot(request: Request):
         result = await generate_signal(symbol)
         return AgentResponse(message={"role": "assistant", "content": result})
     
-    # 3. ПРОВЕРЯЕМ x-payment заголовок (ДЛЯ X402)
+    # Проверяем x-payment заголовок (для x402)
     payment_header = (
         request.headers.get("x-payment") or
         request.headers.get("payment-signature")
@@ -1070,8 +1074,8 @@ async def crypto_snapshot(request: Request):
         result = await generate_signal(symbol)
         return AgentResponse(message={"role": "assistant", "content": result})
     
-    # 4. НЕТ НИ tx_hash, НИ x-payment — ВОЗВРАЩАЕМ 402
-    logger.info("⚠️ No payment header or tx_hash, returning 402")
+    # Нет платежа — 402
+    logger.info("⚠️ No payment, returning 402")
     return create_402_response()
 
 # ============================================================
