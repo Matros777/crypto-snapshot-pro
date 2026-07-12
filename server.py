@@ -692,7 +692,6 @@ PAYMENT_CONFIG = {
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
             "maxTimeoutSeconds": 300,
-            # ✅ ПРАВИЛЬНЫЙ domain для EIP-712
             "domain": {
                 "name": "USD Coin",
                 "version": "2",
@@ -728,12 +727,7 @@ PAYMENT_CONFIG = {
     }
 }
 
-# ============================================================
-# X402 ФУНКЦИИ
-# ============================================================
-
 def create_402_response():
-    """Создает 402 Payment Required ответ для x402 клиента."""
     encoded = base64.b64encode(
         json.dumps(PAYMENT_CONFIG, separators=(",", ":")).encode()
     ).decode()
@@ -1031,36 +1025,53 @@ async def payable_endpoint(request: Request):
     return {"status": "ok", "message": "Payment verified"}
 
 # ============================================================
-# ГЛАВНЫЙ API — POST ОБРАБОТЧИК
+# ГЛАВНЫЙ API — POST ОБРАБОТЧИК (ПОДДЕРЖИВАЕТ И tx_hash, И x-payment)
 # ============================================================
 
 @app.post("/")
 async def crypto_snapshot(request: Request):
-    """POST — проверяет платеж и возвращает анализ."""
-    # ПРОВЕРЯЕМ ПЛАТЁЖ ПЕРВЫМ ДЕЛОМ!
+    """POST — проверяет платеж (tx_hash или x-payment) и возвращает анализ."""
+    
+    # 1. ПРОВЕРЯЕМ ТЕЛО ЗАПРОСА
+    try:
+        body = await request.json()
+    except:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
+    # 2. ПРОВЕРЯЕМ tx_hash (ДЛЯ ВЕБ-ИНТЕРФЕЙСА)
+    tx_hash = body.get("tx_hash")
+    if tx_hash:
+        logger.info(f"🔍 Verifying tx: {tx_hash}")
+        if not await verify_tx_payment(tx_hash):
+            return Response(
+                content="Payment verification failed. Transaction not found or invalid.",
+                status_code=402
+            )
+        logger.info(f"✅ Tx {tx_hash} verified")
+        symbol = body.get("symbol", "BTC")
+        result = await generate_signal(symbol)
+        return AgentResponse(message={"role": "assistant", "content": result})
+    
+    # 3. ПРОВЕРЯЕМ x-payment заголовок (ДЛЯ X402)
     payment_header = (
         request.headers.get("x-payment") or
         request.headers.get("payment-signature")
     )
     
-    # ЕСЛИ ЕСТЬ ПЛАТЁЖ — ПРОВЕРЯЕМ
     if payment_header:
+        logger.info(f"🔍 Payment header found, verifying...")
         valid = await verify_and_settle_with_facilitator(payment_header)
         if not valid:
             return Response(
                 content="Payment verification failed",
                 status_code=402
             )
-        # ПЛАТЁЖ ПРОШЁЛ — ГЕНЕРИРУЕМ СИГНАЛ
-        try:
-            body = await request.json()
-        except:
-            raise HTTPException(status_code=400, detail="Invalid JSON body")
         symbol = body.get("symbol", "BTC")
         result = await generate_signal(symbol)
         return AgentResponse(message={"role": "assistant", "content": result})
     
-    # ЕСЛИ НЕТ ПЛАТЕЖА — ВОЗВРАЩАЕМ 402
+    # 4. НЕТ НИ tx_hash, НИ x-payment — ВОЗВРАЩАЕМ 402
+    logger.info("⚠️ No payment header or tx_hash, returning 402")
     return create_402_response()
 
 # ============================================================
