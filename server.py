@@ -745,15 +745,16 @@ def encode_payment_config():
     ).decode()
 
 def create_402_response():
-    """Создает 402 Payment Required ответ для x402 клиента."""
-    encoded = encode_payment_config()
+    """Правильный 402 для x402"""
+    envelope = json.dumps(PAYMENT_CONFIG, separators=(',', ':'))
+    encoded = base64.b64encode(envelope.encode('utf-8')).decode('utf-8')
+    
     return Response(
+        content="Payment Required",
         status_code=402,
         headers={
-            "Payment-Required": encoded
-        },
-        content=json.dumps(PAYMENT_CONFIG),
-        media_type="application/json"
+            "payment-required": encoded   # ← маленькими буквами!
+        }
     )
 
 # ============================================================
