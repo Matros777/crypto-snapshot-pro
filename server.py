@@ -288,7 +288,7 @@ app.mount("/mcp", mcp_app)
 logger.info("✅ MCP server mounted at /mcp")
 
 # ============================================================
-# ПРАВИЛЬНЫЙ X402 PAYMENT_CONFIG С EIP-712 DOMAIN (СНАЧАЛА!)
+# ПРАВИЛЬНЫЙ X402 PAYMENT_CONFIG С EIP-712 DOMAIN
 # ============================================================
 
 PAYMENT_CONFIG = {
@@ -342,7 +342,7 @@ PAYMENT_CONFIG = {
 }
 
 # ============================================================
-# X402 ФУНКЦИИ (ПОСЛЕ PAYMENT_CONFIG!)
+# X402 ФУНКЦИИ (ДОЛЖНЫ БЫТЬ ДО root!)
 # ============================================================
 
 def create_402_response():
@@ -359,6 +359,26 @@ def create_402_response():
         },
         content=json.dumps(PAYMENT_CONFIG, separators=(",", ":"))
     )
+
+# ============================================================
+# ГЛАВНАЯ СТРАНИЦА — УМНЫЙ ОТВЕТ (И РЕДИРЕКТ, И X402)
+# ============================================================
+
+@app.get("/")
+async def root(request: Request):
+    """
+    GET запрос на корень:
+    - Браузер (text/html) -> редирект на /app
+    - x402 (application/json) -> 402 Payment Required
+    """
+    accept_header = request.headers.get("accept", "")
+    
+    # Если браузер хочет HTML - редирект
+    if "text/html" in accept_header:
+        return RedirectResponse(url="/app")
+    
+    # Иначе - 402 Payment Required для x402
+    return create_402_response()
 
 # ============================================================
 # ЯНДЕКС ВЕРИФИКАЦИЯ
@@ -727,26 +747,6 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         return False
 
 # ============================================================
-# ГЛАВНАЯ СТРАНИЦА — УМНЫЙ ОТВЕТ (И РЕДИРЕКТ, И X402)
-# ============================================================
-
-@app.get("/")
-async def root(request: Request):
-    """
-    GET запрос на корень:
-    - Браузер (text/html) -> редирект на /app
-    - x402 (application/json) -> 402 Payment Required
-    """
-    accept_header = request.headers.get("accept", "")
-    
-    # Если браузер хочет HTML - редирект
-    if "text/html" in accept_header:
-        return RedirectResponse(url="/app")
-    
-    # Иначе - 402 Payment Required для x402
-    return create_402_response()
-
-# ============================================================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 # ============================================================
 
@@ -1037,12 +1037,22 @@ async def payable_endpoint(request: Request):
 async def crypto_snapshot(request: Request):
     """POST — проверяет платеж и возвращает анализ."""
     
+    # ПРОВЕРЯЕМ ТЕЛО ЗАПРОСА
     try:
         body = await request.json()
     except:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
+        return create_402_response()  # ❌ НЕПРАВИЛЬНО! ДОЛЖЕН БЫТЬ 400
     
-    # Проверяем tx_hash (для веб-интерфейса)
+    # ПРОВЕРЯЕМ СИМВОЛ
+    symbol = body.get("symbol", "").strip()
+    if not symbol:
+        # Возвращаем подсказку
+        return AgentResponse(message={
+            "role": "assistant",
+            "content": "📊 CRYPTO SNAPSHOT PRO\n\nSend a symbol to analyze.\n\nExamples:\n• BTC\n• ETH\n• SOL\n• DOGE\n• XRP\n\nUsage: POST {\"symbol\": \"BTC\"}"
+        })
+    
+    # ПРОВЕРЯЕМ tx_hash (ДЛЯ ВЕБ-ИНТЕРФЕЙСА)
     tx_hash = body.get("tx_hash")
     if tx_hash:
         logger.info(f"🔍 Verifying tx: {tx_hash}")
@@ -1052,11 +1062,10 @@ async def crypto_snapshot(request: Request):
                 status_code=402
             )
         logger.info(f"✅ Tx {tx_hash} verified")
-        symbol = body.get("symbol", "BTC")
         result = await generate_signal(symbol)
         return AgentResponse(message={"role": "assistant", "content": result})
     
-    # Проверяем x-payment заголовок (для x402)
+    # ПРОВЕРЯЕМ x-payment заголовок (ДЛЯ X402)
     payment_header = (
         request.headers.get("x-payment") or
         request.headers.get("payment-signature")
@@ -1070,11 +1079,10 @@ async def crypto_snapshot(request: Request):
                 content="Payment verification failed",
                 status_code=402
             )
-        symbol = body.get("symbol", "BTC")
         result = await generate_signal(symbol)
         return AgentResponse(message={"role": "assistant", "content": result})
     
-    # Нет платежа — 402
+    # НЕТ ПЛАТЕЖА — 402
     logger.info("⚠️ No payment, returning 402")
     return create_402_response()
 
