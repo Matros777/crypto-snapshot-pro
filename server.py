@@ -736,10 +736,10 @@ def encode_payment_config():
 
 
 def create_402_response():
-    """Правильная версия"""
+    """Использует ПОЛНЫЙ PAYMENT_CONFIG"""
     envelope = json.dumps(PAYMENT_CONFIG, separators=(',', ':'))
     encoded = base64.b64encode(envelope.encode('utf-8')).decode('utf-8')
-  
+   
     return Response(
         content="Payment Required",
         status_code=402,
