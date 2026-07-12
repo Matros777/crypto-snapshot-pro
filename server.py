@@ -19,7 +19,7 @@ from typing import Optional, Any
 from dotenv import load_dotenv
 
 # ============================================================
-# ЗАГРУЗКА ПЕРЕМЕННЫХ И ЛОГГЕР
+# ЗАГРУЗКА ПЕРЕМЕННЫХ И ЛОГГЕР (СНАЧАЛА!)
 # ============================================================
 
 load_dotenv()
@@ -39,13 +39,22 @@ logger = logging.getLogger("crypto-snapshot")
 AGENTIC_TOKEN = os.getenv("AGENTIC_TOKEN", "")
 
 def verify_agentic_token(request: Request) -> bool:
+    """Проверяет токен авторизации от Agentic Market."""
+    # Если токен не настроен - пропускаем (для разработки)
     if not AGENTIC_TOKEN:
         return True
     
+    # Проверяем заголовок Authorization: Bearer <token>
     auth_header = request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "").strip()
+    
+    # Проверяем альтернативный заголовок X-API-Key
     x_api_key = request.headers.get("X-API-Key", "")
+    
+    # Проверяем специальный заголовок x-agentic-token
     agentic_header = request.headers.get("x-agentic-token", "")
+    
+    # Проверяем заголовок X-Agentic-Token (с большой буквы)
     agentic_header2 = request.headers.get("X-Agentic-Token", "")
     
     return (token == AGENTIC_TOKEN or 
@@ -62,7 +71,7 @@ app = FastAPI(
 )
 
 # ============================================================
-# MCP СЕРВЕР
+# MCP СЕРВЕР — ПОЛНАЯ ПОДДЕРЖКА JSON-RPC С ПРОВЕРКОЙ ТОКЕНА
 # ============================================================
 
 from fastapi import FastAPI as _FastAPI
@@ -71,6 +80,8 @@ mcp_app = _FastAPI(title="MCP Server")
 
 @mcp_app.get("/")
 async def mcp_root(request: Request):
+    """GET обработчик с проверкой токена."""
+    # Проверяем токен (только если он настроен)
     if AGENTIC_TOKEN and not verify_agentic_token(request):
         return JSONResponse(
             status_code=401,
@@ -115,6 +126,8 @@ async def mcp_root(request: Request):
 
 @mcp_app.post("/")
 async def mcp_handler(request: Request):
+    """POST обработчик с проверкой токена."""
+    # Проверяем токен (только если он настроен)
     if AGENTIC_TOKEN and not verify_agentic_token(request):
         return {
             "jsonrpc": "2.0",
@@ -131,6 +144,7 @@ async def mcp_handler(request: Request):
         params = body.get("params", {})
         request_id = body.get("id")
         
+        # Initialize — первый запрос от MCP клиента
         if method == "initialize":
             return {
                 "jsonrpc": "2.0",
@@ -149,6 +163,7 @@ async def mcp_handler(request: Request):
                 }
             }
         
+        # tools/list — список инструментов
         if method == "tools/list":
             return {
                 "jsonrpc": "2.0",
@@ -181,6 +196,7 @@ async def mcp_handler(request: Request):
                 }
             }
         
+        # tools/call — вызов инструмента
         if method == "tools/call":
             tool_name = params.get("name")
             arguments = params.get("arguments", {})
@@ -245,6 +261,7 @@ async def mcp_handler(request: Request):
                     }
                 }
         
+        # ping — проверка жизни
         if method == "ping":
             return {
                 "jsonrpc": "2.0",
@@ -252,6 +269,7 @@ async def mcp_handler(request: Request):
                 "result": {"status": "pong"}
             }
         
+        # notifications/initialized — подтверждение инициализации
         if method == "notifications/initialized":
             return {
                 "jsonrpc": "2.0",
@@ -259,6 +277,7 @@ async def mcp_handler(request: Request):
                 "result": {"status": "ok"}
             }
         
+        # Неизвестный метод
         return {
             "jsonrpc": "2.0",
             "id": request_id,
@@ -277,6 +296,7 @@ async def mcp_handler(request: Request):
 
 @mcp_app.get("/health")
 async def mcp_health(request: Request):
+    """Health check с проверкой токена."""
     if AGENTIC_TOKEN and not verify_agentic_token(request):
         return JSONResponse(
             status_code=401,
@@ -284,31 +304,20 @@ async def mcp_health(request: Request):
         )
     return {"status": "ok", "service": "MCP Server", "version": "1.0.0"}
 
+# МОНТИРУЕМ MCP
 app.mount("/mcp", mcp_app)
 logger.info("✅ MCP server mounted at /mcp")
 
 # ============================================================
-# ГЛАВНАЯ СТРАНИЦА — УМНЫЙ ОТВЕТ (И РЕДИРЕКТ, И X402)
+# ГЛАВНАЯ СТРАНИЦА — РЕДИРЕКТ НА /app
 # ============================================================
 
 @app.get("/")
-async def root(request: Request):
-    """
-    GET запрос на корень:
-    - Браузер (text/html) -> редирект на /app
-    - x402 (application/json) -> payment config
-    """
-    accept_header = request.headers.get("accept", "")
-    
-    # Если браузер хочет HTML - редирект
-    if "text/html" in accept_header:
-        return RedirectResponse(url="/app")
-    
-    # Иначе - payment config для x402
-    return create_402_response()
+async def root():
+    return RedirectResponse(url="/app")
 
 # ============================================================
-# ЯНДЕКС ВЕРИФИКАЦИЯ
+# ЯНДЕКС ФАЙЛ ДЛЯ ВЕРИФИКАЦИИ
 # ============================================================
 
 @app.get("/yandex_d100e212bdd18c7b.html")
@@ -323,7 +332,7 @@ async def yandex_verify():
     """)
 
 # ============================================================
-# ПЕРЕМЕННЫЕ И ФУНКЦИИ
+# ОСТАЛЬНЫЕ ПЕРЕМЕННЫЕ И ФУНКЦИИ
 # ============================================================
 
 ASI_API_KEY = os.getenv("ASI_API_KEY", "")
@@ -673,15 +682,11 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         logger.error(f"Facilitator error: {e}")
         return False
 
-# ============================================================
-# ПРАВИЛЬНЫЙ X402 PAYMENT_CONFIG С EIP-712 DOMAIN
-# ============================================================
-
 PAYMENT_CONFIG = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com/",
-        "description": "Crypto Snapshot Pro",
+        "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports all Binance USDT pairs (500+ pairs including BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
         "mimeType": "application/json"
     },
     "accepts": [
@@ -692,36 +697,19 @@ PAYMENT_CONFIG = {
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
             "maxTimeoutSeconds": 300,
-
-            "domain": {
-                "name": "USD Coin",
-                "version": "2",
-                "chainId": 8453,
-                "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-            },
-
             "extra": {
                 "name": "USD Coin",
-                "version": "2",
-                "domain": {
-                    "name": "USD Coin",
-                    "version": "2",
-                    "chainId": 8453,
-                    "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-                }
+                "version": "2"
             }
         }
     ],
-
     "extensions": {
         "bazaar": {
             "info": {
                 "input": {
                     "type": "http",
                     "method": "POST",
-                    "body": {
-                        "symbol": "BTC"
-                    },
+                    "body": {},
                     "bodyType": "json"
                 },
                 "output": {
@@ -729,55 +717,31 @@ PAYMENT_CONFIG = {
                     "example": {
                         "message": {
                             "role": "assistant",
-                            "content": "CRYPTO SNAPSHOT PRO analysis"
+                            "content": "CRYPTO SNAPSHOT PRO - BTC/USDT..."
                         }
                     }
                 }
             },
             "schema": {
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "type": "object",
-                "properties": {
-                    "input": {
-                        "type": "object"
-                    },
-                    "output": {
-                        "type": "object"
-                    }
-                },
-                "required": [
-                    "input",
-                    "output"
-                ]
+                "type": "object"
             }
         }
     }
 }
 
-
-def encode_payment_config():
-    return base64.b64encode(
-        json.dumps(
-            PAYMENT_CONFIG,
-            separators=(",", ":")
-        ).encode("utf-8")
-    ).decode("utf-8")
-
-
 def create_402_response():
-    encoded = encode_payment_config()
-
+    envelope = json.dumps(PAYMENT_CONFIG, separators=(',', ':'))
+    encoded = base64.b64encode(envelope.encode("utf-8")).decode("utf-8")
+    logger.info("402 Payment Required sent")
     return Response(
-        content=json.dumps(PAYMENT_CONFIG),
+        content="Payment Required",
         status_code=402,
-        media_type="application/json",
         headers={
-            "payment-required": encoded
+            "PAYMENT-REQUIRED": encoded,
+            "content-type": "text/plain"
         }
     )
-# ============================================================
-# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-# ============================================================
 
 async def fetch_binance(endpoint: str, params: dict = None) -> dict:
     cache_key = f"{endpoint}_{str(params)}"
@@ -1059,44 +1023,60 @@ async def payable_endpoint(request: Request):
     return {"status": "ok", "message": "Payment verified"}
 
 # ============================================================
-# ГЛАВНЫЙ API — POST ОБРАБОТЧИК
+# ГЛАВНЫЙ API — ТОЛЬКО POST
 # ============================================================
 
 @app.post("/")
 async def crypto_snapshot(request: Request):
-    """POST — проверяет платеж и возвращает анализ."""
-    # ПРОВЕРЯЕМ ПЛАТЁЖ ПЕРВЫМ ДЕЛОМ!
-    payment_header = (
-        request.headers.get("x-payment") or
-        request.headers.get("payment-signature")
-    )
-    
-    # ЕСЛИ ЕСТЬ ПЛАТЁЖ — ПРОВЕРЯЕМ
-    if payment_header:
+    symbol = None
+    tx_hash = None
+
+    try:
+        body = await request.json()
+    except:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    tx_hash = body.get("tx_hash")
+
+    if "message" in body and isinstance(body["message"], dict):
+        symbol = body["message"].get("content", "").strip()
+    elif isinstance(body, dict) and "symbol" in body:
+        symbol = body["symbol"].strip()
+    elif "content" in body:
+        symbol = body["content"].strip()
+    elif "message" in body and isinstance(body["message"], str):
+        symbol = body["message"].strip()
+
+    if not symbol:
+        return AgentResponse(message={
+            "role": "assistant",
+            "content": "📊 CRYPTO SNAPSHOT PRO\n\nSend a symbol to analyze.\n\nExamples:\n• BTC\n• ETH\n• SOL\n• DOGE\n• XRP\n\nUsage: POST {\"symbol\": \"BTC\"}"
+        })
+
+    if tx_hash:
+        logger.info(f"🔍 Verifying tx: {tx_hash}")
+        if not await verify_tx_payment(tx_hash):
+            return Response(
+                content="Payment verification failed. Transaction not found or invalid.",
+                status_code=402
+            )
+        logger.info(f"✅ Tx {tx_hash} verified")
+    else:
+        payment_header = (
+            request.headers.get("x-payment") or
+            request.headers.get("payment-signature")
+        )
+
+        if not payment_header:
+            return create_402_response()
+
         valid = await verify_and_settle_with_facilitator(payment_header)
         if not valid:
             return Response(
                 content="Payment verification failed",
                 status_code=402
             )
-        # ПЛАТЁЖ ПРОШЁЛ — ГЕНЕРИРУЕМ СИГНАЛ
-        try:
-            body = await request.json()
-        except:
-            raise HTTPException(status_code=400, detail="Invalid JSON body")
-        symbol = body.get("symbol", "BTC")
-        result = await generate_signal(symbol)
-        return AgentResponse(message={"role": "assistant", "content": result})
-    
-    # ЕСЛИ НЕТ ПЛАТЕЖА — ВОЗВРАЩАЕМ 402
-    return create_402_response()
 
-# ============================================================
-# ГЕНЕРАЦИЯ СИГНАЛА
-# ============================================================
-
-async def generate_signal(symbol: str) -> str:
-    """Генерирует торговый сигнал для указанного символа."""
     try:
         symbol = symbol.upper()
         symbol = symbol.replace("USDT", "").replace("USD", "").replace("NODE", "")
@@ -1237,7 +1217,7 @@ async def generate_signal(symbol: str) -> str:
 ⚠️  Risk Disclosure: This is NOT financial advice. Always manage risk. Past performance does not guarantee future results.
 """
 
-        return result
+        return AgentResponse(message={"role": "assistant", "content": result})
 
     except HTTPException:
         raise
@@ -1260,7 +1240,7 @@ async def health_check():
     return {"status": "ok", "service": "crypto-snapshot-pro", "proxy_enabled": USE_PROXY}
 
 # ============================================================
-# ЭНДПОИНТ ДЛЯ БАЛАНСА
+# ЭНДПОИНТ ДЛЯ БАЛАНСА (ВОССТАНАВЛИВАЕМ)
 # ============================================================
 
 class BalanceRequest(BaseModel):
@@ -1276,6 +1256,7 @@ async def get_balance(request: BalanceRequest):
             return {"error": "Invalid address", "balance": "0"}
         
         async with httpx.AsyncClient(timeout=10.0) as client:
+            # Запрос баланса USDC
             data = {
                 "jsonrpc": "2.0",
                 "method": "eth_call",
