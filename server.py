@@ -717,7 +717,19 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         logger.error(f"Failed to decode payment payload: {e}")
         return False
 
-    requirements = PAYMENT_CONFIG_BASE["accepts"][0]
+    # ⚠️ ВАЖНО: используем requirements С extra для верификации!
+    requirements = {
+        "scheme": "exact",
+        "network": "eip155:8453",
+        "amount": "25000",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
+        "maxTimeoutSeconds": 300,
+        "extra": {
+            "name": "USD Coin",
+            "version": "2"
+        }
+    }
 
     try:
         async with httpx.AsyncClient(timeout=20) as client:
@@ -1062,15 +1074,12 @@ async def crypto_snapshot(request: Request):
     try:
         body = await request.json()
     except:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
+        # Agentic Market discovery - нет тела -> 402 с domain в корне!
+        logger.info("⚠️ No JSON body, returning 402 for Agentic Market")
+        return create_402_response_for_agentic()
     
-    # ПРОВЕРЯЕМ СИМВОЛ
+    # ПОЛУЧАЕМ СИМВОЛ
     symbol = body.get("symbol", "").strip()
-    if not symbol:
-        return AgentResponse(message={
-            "role": "assistant",
-            "content": "📊 CRYPTO SNAPSHOT PRO\n\nSend a symbol to analyze.\n\nExamples:\n• BTC\n• ETH\n• SOL\n• DOGE\n• XRP\n\nUsage: POST {\"symbol\": \"BTC\"}"
-        })
     
     # ПРОВЕРЯЕМ tx_hash (ДЛЯ ВЕБ-ИНТЕРФЕЙСА)
     tx_hash = body.get("tx_hash")
@@ -1082,7 +1091,7 @@ async def crypto_snapshot(request: Request):
                 status_code=402
             )
         logger.info(f"✅ Tx {tx_hash} verified")
-        result = await generate_signal(symbol)
+        result = await generate_signal(symbol or "BTC")
         return AgentResponse(message={"role": "assistant", "content": result})
     
     # ПРОВЕРЯЕМ x-payment заголовок (ДЛЯ X402)
@@ -1099,10 +1108,15 @@ async def crypto_snapshot(request: Request):
                 content="Payment verification failed",
                 status_code=402
             )
-        result = await generate_signal(symbol)
+        result = await generate_signal(symbol or "BTC")
         return AgentResponse(message={"role": "assistant", "content": result})
     
-    # НЕТ ПЛАТЕЖА — 402 ДЛЯ СКРИПТА (с extra)
+    # ЕСЛИ НЕТ symbol -> Agentic Market discovery (с domain в корне)
+    if not symbol:
+        logger.info("⚠️ No symbol, returning 402 for Agentic Market")
+        return create_402_response_for_agentic()
+    
+    # ЕСЛИ ЕСТЬ symbol, НО НЕТ ПЛАТЕЖА -> 402 ДЛЯ СКРИПТА (с extra)
     logger.info("⚠️ No payment, returning 402 for script")
     return create_402_response_for_script()
 
