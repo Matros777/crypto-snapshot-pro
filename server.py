@@ -744,15 +744,15 @@ from fastapi.responses import JSONResponse
 def create_402_response():
     envelope = json.dumps(
         PAYMENT_CONFIG,
-        separators=(',', ':')
+        separators=(",", ":")
     )
 
     encoded = base64.b64encode(
-        envelope.encode('utf-8')
-    ).decode('utf-8')
+        envelope.encode("utf-8")
+    ).decode("utf-8")
 
     return Response(
-        content=json.dumps(PAYMENT_CONFIG),
+        content=envelope,
         status_code=402,
         media_type="application/json",
         headers={
