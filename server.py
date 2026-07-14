@@ -1249,7 +1249,7 @@ async def generate_signal(symbol: str) -> str:
 ⚠️  Risk Disclosure: This is NOT financial advice. Always manage risk. Past performance does not guarantee future results.
 """
 
-                  return result
+                      return result
 
     except HTTPException:
         raise
@@ -1257,13 +1257,8 @@ async def generate_signal(symbol: str) -> str:
         logger.error(f"Error: {e}")
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
-# ============================================================
-# МОНТИРУЕМ СТАТИЧЕСКИЕ ПАПКИ
-# ============================================================
-
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/.well-known", StaticFiles(directory=".well-known"), name="well-known")
-
 
 @app.get("/app")
 async def web_app():
@@ -1272,7 +1267,6 @@ async def web_app():
             return HTMLResponse(f.read())
     except FileNotFoundError:
         return HTMLResponse("<h1>Web interface not found</h1>", status_code=404)
-
 
 @app.get("/health")
 async def health_check():
