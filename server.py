@@ -682,7 +682,7 @@ MIN_AMOUNT = 25000
 class AgentResponse(BaseModel):
     message: dict
 
-FACILITATOR_URL = "https://facilitator.openx402.ai"
+FACILITATOR_URL = "https://facilitator.xpay.sh"
 
 async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
     logger.info("Starting facilitator verification...")
