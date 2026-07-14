@@ -1249,13 +1249,13 @@ async def generate_signal(symbol: str) -> str:
 ⚠️  Risk Disclosure: This is NOT financial advice. Always manage risk. Past performance does not guarantee future results.
 """
 
-           return result
+                  return result
 
-except HTTPException:
-    raise
-except Exception as e:
-    logger.error(f"Error: {e}")
-    raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 # ============================================================
 # МОНТИРУЕМ СТАТИЧЕСКИЕ ПАПКИ
@@ -1277,7 +1277,6 @@ async def web_app():
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "crypto-snapshot-pro", "proxy_enabled": USE_PROXY}
-
 # ============================================================
 # ЭНДПОИНТ ДЛЯ БАЛАНСА
 # ============================================================
