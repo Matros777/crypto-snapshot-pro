@@ -1,6 +1,5 @@
 """
 Crypto Snapshot Pro — x402 Agent
-Чистый x402 сервер без привязки к Agentic Market
 """
 
 from fastapi import FastAPI, HTTPException, Request, Response
