@@ -213,10 +213,6 @@ logger.info("✅ MCP server mounted at /mcp")
 # БАЗОВЫЙ PAYMENT_CONFIG
 # ============================================================
 
-# ============================================================
-# БАЗОВЫЙ PAYMENT_CONFIG
-# ============================================================
-
 # Для OVAL — плоская структура
 PAYMENT_CONFIG_OVAL = {
     "x402Version": 2,
@@ -238,6 +234,34 @@ PAYMENT_CONFIG_OVAL = {
         "version": "2",
         "chainId": 8453,
         "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    },
+    "extensions": {
+        "bazaar": {
+            "info": {
+                "input": {
+                    "type": "http",
+                    "method": "POST",
+                    "body": {
+                        "symbol": {
+                            "type": "string",
+                            "description": "Cryptocurrency symbol (BTC, ETH, SOL, DOGE, XRP, etc.)"
+                        }
+                    },
+                    "bodyType": "json"
+                },
+                "output": {
+                    "type": "json",
+                    "example": {
+                        "symbol": "BTC",
+                        "analysis": "📊 CRYPTO SNAPSHOT PRO — BTC/USDT..."
+                    }
+                }
+            },
+            "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object"
+            }
+        }
     }
 }
 
@@ -262,7 +286,35 @@ PAYMENT_CONFIG_SCRIPT = {
                 "version": "2"
             }
         }
-    ]
+    ],
+    "extensions": {
+        "bazaar": {
+            "info": {
+                "input": {
+                    "type": "http",
+                    "method": "POST",
+                    "body": {
+                        "symbol": {
+                            "type": "string",
+                            "description": "Cryptocurrency symbol (BTC, ETH, SOL, DOGE, XRP, etc.)"
+                        }
+                    },
+                    "bodyType": "json"
+                },
+                "output": {
+                    "type": "json",
+                    "example": {
+                        "symbol": "BTC",
+                        "analysis": "📊 CRYPTO SNAPSHOT PRO — BTC/USDT..."
+                    }
+                }
+            },
+            "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object"
+            }
+        }
+    }
 }
 
 # Для совместимости со старым кодом
