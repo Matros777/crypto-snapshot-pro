@@ -1,7 +1,6 @@
 """
-Crypto Snapshot Pro — x402 Agent for Agentic.Market
-Agent ID: #3613
-Service: Professional Multi-Factor Market Analysis ($0.025 per request)
+Crypto Snapshot Pro — x402 Agent
+Чистый x402 сервер без привязки к Agentic Market
 """
 
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -33,49 +32,6 @@ logging.basicConfig(
 logger = logging.getLogger("crypto-snapshot")
 
 # ============================================================
-# ПРОВЕРКА ТОКЕНА AGENTIC MARKET
-# ============================================================
-
-AGENTICMARKET_SECRET = os.getenv("AGENTICMARKET_SECRET", "")
-
-def verify_agentic_token(request: Request) -> bool:
-    if not AGENTICMARKET_SECRET:
-        logger.info("ℹ️ AGENTICMARKET_SECRET not set, skipping auth")
-        return True
-    
-    # ЛОГИРУЕМ ВСЕ ЗАГОЛОВКИ!
-    logger.info(f"🔍 ALL HEADERS: {dict(request.headers)}")
-    
-    # ПРОВЕРЯЕМ ВСЕ ВОЗМОЖНЫЕ ЗАГОЛОВКИ
-    secret_from_header = request.headers.get("x-agenticmarket-secret", "")
-    secret_from_proxy = request.headers.get("x-agentic-proxy-secret", "")
-    auth_header = request.headers.get("authorization", "")
-    api_key = request.headers.get("x-api-key", "")
-    
-    # ЛОГИРУЕМ КАЖДЫЙ
-    logger.info(f"🔍 x-agenticmarket-secret: {secret_from_header[:20] if secret_from_header else 'None'}...")
-    logger.info(f"🔍 x-agentic-proxy-secret: {secret_from_proxy[:20] if secret_from_proxy else 'None'}...")
-    logger.info(f"🔍 authorization: {auth_header[:20] if auth_header else 'None'}...")
-    logger.info(f"🔍 x-api-key: {api_key[:20] if api_key else 'None'}...")
-    logger.info(f"🔍 Expected: {AGENTICMARKET_SECRET[:20] if AGENTICMARKET_SECRET else 'None'}...")
-    
-    # ПРОВЕРЯЕМ ВСЕ
-    is_valid = (
-        secret_from_header == AGENTICMARKET_SECRET or
-        secret_from_proxy == AGENTICMARKET_SECRET or
-        auth_header.replace("Bearer ", "") == AGENTICMARKET_SECRET or
-        api_key == AGENTICMARKET_SECRET
-    )
-    
-    if not is_valid:
-        logger.warning("❌ Unauthorized: Invalid AgenticMarket token")
-    else:
-        logger.info("✅ Auth passed")
-    
-    return is_valid
-
-
-# ============================================================
 # СОЗДАЕМ ГЛАВНОЕ ПРИЛОЖЕНИЕ
 # ============================================================
 
@@ -92,21 +48,11 @@ from fastapi import FastAPI as _FastAPI
 mcp_app = _FastAPI(title="MCP Server")
 
 # ============================================================
-# MCP ЭНДПОИНТЫ
+# MCP ЭНДПОИНТЫ (БЕЗ АВТОРИЗАЦИИ)
 # ============================================================
 
 @mcp_app.post("/")
 async def mcp_handler(request: Request):
-    if AGENTICMARKET_SECRET and not verify_agentic_token(request):
-        return {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "error": {
-                "code": -32001,
-                "message": "Unauthorized: Invalid AgenticMarket token"
-            }
-        }
-    
     try:
         body = await request.json()
         method = body.get("method", "")
@@ -198,7 +144,7 @@ async def mcp_handler(request: Request):
                             }
                         }
             
-            if tool_name == "get_supported_pairs":
+            if method == "get_supported_pairs":
                 try:
                     async with httpx.AsyncClient(timeout=10.0) as client:
                         response = await client.get("https://api.binance.com/api/v3/exchangeInfo")
@@ -259,17 +205,13 @@ async def mcp_handler(request: Request):
 
 @mcp_app.get("/health")
 async def mcp_health(request: Request):
-    if AGENTICMARKET_SECRET and not verify_agentic_token(request):
-        return JSONResponse(
-            status_code=401,
-            content={"status": "unauthorized", "message": "Invalid token"}
-        )
     return {"status": "ok", "service": "MCP Server", "version": "1.0.0"}
 
 app.mount("/mcp", mcp_app)
 logger.info("✅ MCP server mounted at /mcp")
+
 # ============================================================
-# БАЗОВЫЙ PAYMENT_CONFIG (БЕЗ DOMAIN/EXTRA)
+# БАЗОВЫЙ PAYMENT_CONFIG
 # ============================================================
 
 PAYMENT_CONFIG_BASE = {
@@ -288,41 +230,20 @@ PAYMENT_CONFIG_BASE = {
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
             "maxTimeoutSeconds": 300
         }
-    ],
-    "extensions": {
-        "bazaar": {
-            "info": {
-                "input": {
-                    "type": "http",
-                    "method": "POST",
-                    "body": {},
-                    "bodyType": "json"
-                },
-                "output": {
-                    "type": "json",
-                    "example": {
-                        "message": {
-                            "role": "assistant",
-                            "content": "CRYPTO SNAPSHOT PRO - BTC/USDT..."
-                        }
-                    }
-                }
-            },
-            "schema": {
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "type": "object"
-            }
-        }
-    }
+    ]
 }
 
 # ============================================================
-# X402 ОТВЕТЫ - РАЗНЫЕ ДЛЯ РАЗНЫХ КЛИЕНТОВ
+# X402 ОТВЕТЫ
 # ============================================================
 
-def create_402_response_for_agentic():
-    """Для Agentic Market / Bazaar Discovery - domain в корне"""
+def create_402_response_oval():
+    """Для OVAL кошелька - полный формат с domain и extra"""
     config = PAYMENT_CONFIG_BASE.copy()
+    config["accepts"][0]["extra"] = {
+        "name": "USD Coin",
+        "version": "2"
+    }
     config["domain"] = {
         "name": "USD Coin",
         "version": "2",
@@ -342,8 +263,8 @@ def create_402_response_for_agentic():
         content=json.dumps(config, separators=(",", ":"))
     )
 
-def create_402_response_for_script():
-    """Для нашего скрипта (@x402/fetch) - extra внутри accepts"""
+def create_402_response_script():
+    """Для скриптов - extra внутри accepts"""
     config = PAYMENT_CONFIG_BASE.copy()
     config["accepts"][0]["extra"] = {
         "name": "USD Coin",
@@ -363,24 +284,24 @@ def create_402_response_for_script():
     )
 
 # ============================================================
-# ГЛАВНАЯ СТРАНИЦА — УМНЫЙ ОТВЕТ
+# ГЛАВНАЯ СТРАНИЦА
 # ============================================================
 
 @app.get("/")
 async def root(request: Request):
-    """
-    GET запрос на корень:
-    - Браузер (text/html) -> редирект на /app
-    - Agentic Market (application/json) -> 402 с domain в корне
-    """
     accept_header = request.headers.get("accept", "")
+    user_agent = request.headers.get("user-agent", "").lower()
     
     # Браузер → веб-интерфейс
     if "text/html" in accept_header:
         return RedirectResponse(url="/app")
     
-    # Agentic Market / Bazaar → domain в корне
-    return create_402_response_for_agentic()
+    # OVAL → полный формат
+    if "awal" in user_agent or "oval" in user_agent:
+        return create_402_response_oval()
+    
+    # По умолчанию → для скриптов
+    return create_402_response_script()
 
 # ============================================================
 # ЯНДЕКС ВЕРИФИКАЦИЯ
@@ -698,7 +619,6 @@ async def verify_and_settle_with_facilitator(payment_payload: str) -> bool:
         logger.error(f"Failed to decode payment payload: {e}")
         return False
 
-    # ⚠️ ВАЖНО: используем requirements С extra для верификации!
     requirements = {
         "scheme": "exact",
         "network": "eip155:8453",
@@ -966,8 +886,7 @@ def get_signal_from_factors(rsi: float, price_ema20: float, price_ema50: float,
     elif rsi > 60: short_score += 1
 
     if price_ema20 > price_ema50:
-        long_score += 1
-    else:
+        long_score += 1    else:
         short_score += 1
 
     if macd > macd_signal and macd_hist > 0:
@@ -1032,7 +951,7 @@ async def payable_endpoint(request: Request):
         request.headers.get("payment-signature")
     )
     if not payment_header:
-        return create_402_response_for_script()
+        return create_402_response_script()
 
     valid = await verify_and_settle_with_facilitator(payment_header)
     if not valid:
@@ -1051,13 +970,16 @@ async def payable_endpoint(request: Request):
 async def crypto_snapshot(request: Request):
     """POST — проверяет платеж и возвращает анализ."""
     
+    user_agent = request.headers.get("user-agent", "").lower()
+    
     # ПРОВЕРЯЕМ ТЕЛО ЗАПРОСА
     try:
         body = await request.json()
     except:
-        # Agentic Market discovery - нет тела -> 402 с domain в корне!
-        logger.info("⚠️ No JSON body, returning 402 for Agentic Market")
-        return create_402_response_for_agentic()
+        # Если ОВАЛ и нет тела -> 402
+        if "awal" in user_agent or "oval" in user_agent:
+            return create_402_response_oval()
+        return create_402_response_script()
     
     # ПОЛУЧАЕМ СИМВОЛ
     symbol = body.get("symbol", "").strip()
@@ -1075,7 +997,7 @@ async def crypto_snapshot(request: Request):
         result = await generate_signal(symbol or "BTC")
         return AgentResponse(message={"role": "assistant", "content": result})
     
-    # ПРОВЕРЯЕМ x-payment заголовок (ДЛЯ X402)
+    # ПРОВЕРЯЕМ x-payment заголовок
     payment_header = (
         request.headers.get("x-payment") or
         request.headers.get("payment-signature")
@@ -1092,14 +1014,14 @@ async def crypto_snapshot(request: Request):
         result = await generate_signal(symbol or "BTC")
         return AgentResponse(message={"role": "assistant", "content": result})
     
-    # ЕСЛИ НЕТ symbol -> Agentic Market discovery (с domain в корне)
+    # ЕСЛИ ЕСТЬ symbol, НО НЕТ ПЛАТЕЖА -> 402
     if not symbol:
-        logger.info("⚠️ No symbol, returning 402 for Agentic Market")
-        return create_402_response_for_agentic()
+        return create_402_response_script()
     
-    # ЕСЛИ ЕСТЬ symbol, НО НЕТ ПЛАТЕЖА -> 402 ДЛЯ СКРИПТА (с extra)
-    logger.info("⚠️ No payment, returning 402 for script")
-    return create_402_response_for_script()
+    logger.info("⚠️ No payment, returning 402")
+    if "awal" in user_agent or "oval" in user_agent:
+        return create_402_response_oval()
+    return create_402_response_script()
 
 # ============================================================
 # ГЕНЕРАЦИЯ СИГНАЛА
