@@ -1249,7 +1249,7 @@ async def generate_signal(symbol: str) -> str:
 ⚠️  Risk Disclosure: This is NOT financial advice. Always manage risk. Past performance does not guarantee future results.
 """
 
-                      return result
+        return result
 
     except HTTPException:
         raise
