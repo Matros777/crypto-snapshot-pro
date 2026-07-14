@@ -213,7 +213,36 @@ logger.info("✅ MCP server mounted at /mcp")
 # БАЗОВЫЙ PAYMENT_CONFIG
 # ============================================================
 
-PAYMENT_CONFIG_BASE = {
+# ============================================================
+# БАЗОВЫЙ PAYMENT_CONFIG
+# ============================================================
+
+# Для OVAL — плоская структура
+PAYMENT_CONFIG_OVAL = {
+    "x402Version": 2,
+    "resource": "https://crypto-snapshot-pro.onrender.com/",
+    "description": "Real-time crypto market analysis using 8-factor scoring: RSI, EMA(20/50), Volume Ratio, Bollinger Bands, RSI Divergence, ATR volatility, Pivot Points. Outputs: LONG/SHORT/HOLD signal, conviction level (LOW/MEDIUM/HIGH/VERY HIGH), Entry/Target/Stop levels, Risk/Reward ratio. Supports all Binance USDT pairs (500+ pairs including BTC, ETH, SOL, DOGE, XRP, etc.). Price: $0.025 per request.",
+    "mimeType": "application/json",
+    "accepts": [
+        {
+            "scheme": "exact",
+            "network": "eip155:8453",
+            "amount": "25000",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
+            "maxTimeoutSeconds": 300
+        }
+    ],
+    "domain": {
+        "name": "USD Coin",
+        "version": "2",
+        "chainId": 8453,
+        "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    }
+}
+
+# Для скриптов — resource как объект
+PAYMENT_CONFIG_SCRIPT = {
     "x402Version": 2,
     "resource": {
         "url": "https://crypto-snapshot-pro.onrender.com/",
@@ -227,28 +256,26 @@ PAYMENT_CONFIG_BASE = {
             "amount": "25000",
             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "payTo": "0x5b7efd37546d6BB02463339cEaDdD80997aC97B3",
-            "maxTimeoutSeconds": 300
+            "maxTimeoutSeconds": 300,
+            "extra": {
+                "name": "USD Coin",
+                "version": "2"
+            }
         }
     ]
 }
+
+# Для совместимости со старым кодом
+PAYMENT_CONFIG_BASE = PAYMENT_CONFIG_SCRIPT
 
 # ============================================================
 # X402 ОТВЕТЫ
 # ============================================================
 
 def create_402_response_oval():
-    """Для OVAL кошелька - полный формат с domain и extra"""
-    config = PAYMENT_CONFIG_BASE.copy()
-    config["accepts"][0]["extra"] = {
-        "name": "USD Coin",
-        "version": "2"
-    }
-    config["domain"] = {
-        "name": "USD Coin",
-        "version": "2",
-        "chainId": 8453,
-        "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-    }
+    """Для OVAL кошелька - плоская структура без extra"""
+    config = PAYMENT_CONFIG_OVAL.copy()
+    
     encoded = base64.b64encode(
         json.dumps(config, separators=(",", ":")).encode()
     ).decode()
@@ -263,12 +290,9 @@ def create_402_response_oval():
     )
 
 def create_402_response_script():
-    """Для скриптов - extra внутри accepts"""
-    config = PAYMENT_CONFIG_BASE.copy()
-    config["accepts"][0]["extra"] = {
-        "name": "USD Coin",
-        "version": "2"
-    }
+    """Для скриптов - resource как объект + extra внутри accepts"""
+    config = PAYMENT_CONFIG_SCRIPT.copy()
+    
     encoded = base64.b64encode(
         json.dumps(config, separators=(",", ":")).encode()
     ).decode()
