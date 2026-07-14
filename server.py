@@ -1258,7 +1258,7 @@ async def generate_signal(symbol: str) -> str:
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/.well-known", StaticFiles(directory=".well-known"), name="well-known")
+#app.mount("/.well-known", StaticFiles(directory=".well-known"), name="well-known")
 
 @app.get("/app")
 async def web_app():
