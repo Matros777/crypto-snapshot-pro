@@ -880,13 +880,18 @@ def get_signal_from_factors(rsi: float, price_ema20: float, price_ema50: float,
                            rsi_divergence: str, pivot: dict) -> tuple[str, str, int, int]:
     long_score = short_score = 0
 
-    if rsi < 30: long_score += 2
-    elif rsi > 70: short_score += 2
-    elif rsi < 40: long_score += 1
-    elif rsi > 60: short_score += 1
+    if rsi < 30:
+        long_score += 2
+    elif rsi > 70:
+        short_score += 2
+    elif rsi < 40:
+        long_score += 1
+    elif rsi > 60:
+        short_score += 1
 
     if price_ema20 > price_ema50:
-        long_score += 1    else:
+        long_score += 1
+    else:
         short_score += 1
 
     if macd > macd_signal and macd_hist > 0:
