@@ -42,15 +42,15 @@ app = FastAPI(
 # MCP СЕРВЕР
 # ============================================================
 
-from fastapi import FastAPI as _FastAPI
+from fastapi.routing import APIRouter
 
-mcp_app = _FastAPI(title="MCP Server")
+mcp_router = APIRouter()
 
 # ============================================================
-# MCP ЭНДПОИНТЫ (БЕЗ АВТОРИЗАЦИИ)
+# MCP ЭНДПОИНТЫ
 # ============================================================
 
-@mcp_app.post("")
+@mcp_router.post("/")
 async def mcp_handler(request: Request):
     try:
         body = await request.json()
@@ -64,15 +64,8 @@ async def mcp_handler(request: Request):
                 "id": request_id,
                 "result": {
                     "protocolVersion": "2024-11-05",
-                    "capabilities": {
-                        "tools": {},
-                        "resources": {},
-                        "prompts": {}
-                    },
-                    "serverInfo": {
-                        "name": "Crypto Snapshot Pro",
-                        "version": "1.0.0"
-                    }
+                    "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
+                    "serverInfo": {"name": "Crypto Snapshot Pro", "version": "1.0.0"}
                 }
             }
         
@@ -120,13 +113,11 @@ async def mcp_handler(request: Request):
             
             if tool_name == "crypto_snapshot":
                 symbol = arguments.get("symbol", "BTC")
-                
                 async with httpx.AsyncClient(timeout=30.0) as client:
                     response = await client.post(
                         "https://crypto-snapshot-pro.onrender.com/",
                         json={"symbol": symbol}
                     )
-                    
                     if response.status_code == 200:
                         data = response.json()
                         content = data.get("message", {}).get("content", str(data))
@@ -134,9 +125,7 @@ async def mcp_handler(request: Request):
                             "jsonrpc": "2.0",
                             "id": request_id,
                             "result": {
-                                "content": [
-                                    {"type": "text", "text": content}
-                                ]
+                                "content": [{"type": "text", "text": content}]
                             }
                         }
                     else:
@@ -151,27 +140,19 @@ async def mcp_handler(request: Request):
             
             if tool_name == "check_pair_supported":
                 symbol = arguments.get("symbol", "").upper().strip()
-                
                 if not symbol:
                     return {
                         "jsonrpc": "2.0",
                         "id": request_id,
                         "result": {
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": "❌ Please provide a symbol. Example: {\"symbol\": \"BTC\"}"
-                                }
-                            ]
+                            "content": [{"type": "text", "text": "❌ Please provide a symbol."}]
                         }
                     }
-                
                 if not symbol.endswith("USDT"):
                     symbol_check = f"{symbol}USDT"
                 else:
                     symbol_check = symbol
                     symbol = symbol.replace("USDT", "")
-                
                 try:
                     async with httpx.AsyncClient(timeout=10.0) as client:
                         response = await client.get("https://api.binance.com/api/v3/exchangeInfo")
@@ -179,35 +160,22 @@ async def mcp_handler(request: Request):
                             data = response.json()
                             symbols = [s["symbol"] for s in data["symbols"] 
                                       if s["quoteAsset"] == "USDT" and s["status"] == "TRADING"]
-                            
                             if symbol_check in symbols:
                                 return {
                                     "jsonrpc": "2.0",
                                     "id": request_id,
                                     "result": {
-                                        "content": [
-                                            {
-                                                "type": "text",
-                                                "text": f"✅ {symbol} is supported. You can request a signal for this pair."
-                                            }
-                                        ]
+                                        "content": [{"type": "text", "text": f"✅ {symbol} is supported."}]
                                     }
                                 }
                             else:
-                                # Поиск похожих пар
-                                similar = [s.replace("USDT", "") for s in symbols if symbol_check[:3] in s or s[:3] in symbol_check]
-                                similar = similar[:5]
-                                suggestion = f"\n\nDid you mean: {', '.join(similar)}" if similar else ""
+                                similar = [s.replace("USDT", "") for s in symbols if symbol_check[:3] in s or s[:3] in symbol_check][:5]
+                                suggestion = f" Did you mean: {', '.join(similar)}?" if similar else ""
                                 return {
                                     "jsonrpc": "2.0",
                                     "id": request_id,
                                     "result": {
-                                        "content": [
-                                            {
-                                                "type": "text",
-                                                "text": f"❌ {symbol} is NOT supported.{suggestion}"
-                                            }
-                                        ]
+                                        "content": [{"type": "text", "text": f"❌ {symbol} is NOT supported.{suggestion}"}]
                                     }
                                 }
                 except Exception as e:
@@ -215,36 +183,20 @@ async def mcp_handler(request: Request):
                         "jsonrpc": "2.0",
                         "id": request_id,
                         "result": {
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": f"⚠️ Could not fetch exchange info. Please try again later. Error: {str(e)}"
-                                }
-                            ]
+                            "content": [{"type": "text", "text": f"⚠️ Error: {str(e)}"}]
                         }
                     }
         
         if method == "ping":
-            return {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "result": {"status": "pong"}
-            }
+            return {"jsonrpc": "2.0", "id": request_id, "result": {"status": "pong"}}
         
         if method == "notifications/initialized":
-            return {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "result": {"status": "ok"}
-            }
+            return {"jsonrpc": "2.0", "id": request_id, "result": {"status": "ok"}}
         
         return {
             "jsonrpc": "2.0",
             "id": request_id,
-            "error": {
-                "code": -32601,
-                "message": f"Method '{method}' not found"
-            }
+            "error": {"code": -32601, "message": f"Method '{method}' not found"}
         }
         
     except Exception as e:
@@ -254,12 +206,12 @@ async def mcp_handler(request: Request):
             "error": {"code": -32000, "message": str(e)}
         }
 
-@mcp_app.get("/health")
-async def mcp_health(request: Request):
+@mcp_router.get("/health")
+async def mcp_health():
     return {"status": "ok", "service": "MCP Server", "version": "1.0.0"}
 
-app.mount("/mcp", mcp_app)
-logger.info("✅ MCP server mounted at /mcp")
+app.include_router(mcp_router, prefix="/mcp")
+logger.info("✅ MCP router mounted at /mcp")
 # ============================================================
 # БАЗОВЫЙ PAYMENT_CONFIG
 # ============================================================
