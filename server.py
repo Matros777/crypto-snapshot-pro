@@ -50,7 +50,7 @@ mcp_router = APIRouter()
 # MCP ЭНДПОИНТЫ
 # ============================================================
 
-@mcp_router.post("/")
+@mcp_router.post("")
 async def mcp_handler(request: Request):
     try:
         body = await request.json()
