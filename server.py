@@ -50,7 +50,7 @@ mcp_app = _FastAPI(title="MCP Server")
 # MCP ЭНДПОИНТЫ (БЕЗ АВТОРИЗАЦИИ)
 # ============================================================
 
-@mcp_app.post("/")
+@mcp_app.post("")
 async def mcp_handler(request: Request):
     try:
         body = await request.json()
@@ -97,11 +97,17 @@ async def mcp_handler(request: Request):
                             }
                         },
                         {
-                            "name": "get_supported_pairs",
-                            "description": "Get a list of all supported cryptocurrency pairs (500+ pairs available)",
+                            "name": "check_pair_supported",
+                            "description": "Check if a specific cryptocurrency pair is supported. Pass symbol as parameter (e.g. BTC, ETH, SOL, DOGE, XRP, etc.)",
                             "inputSchema": {
                                 "type": "object",
-                                "properties": {}
+                                "properties": {
+                                    "symbol": {
+                                        "type": "string",
+                                        "description": "Cryptocurrency symbol (BTC, ETH, SOL, DOGE, XRP, etc.)"
+                                    }
+                                },
+                                "required": ["symbol"]
                             }
                         }
                     ]
@@ -143,34 +149,80 @@ async def mcp_handler(request: Request):
                             }
                         }
             
-            if method == "get_supported_pairs":
+            if tool_name == "check_pair_supported":
+                symbol = arguments.get("symbol", "").upper().strip()
+                
+                if not symbol:
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "❌ Please provide a symbol. Example: {\"symbol\": \"BTC\"}"
+                                }
+                            ]
+                        }
+                    }
+                
+                if not symbol.endswith("USDT"):
+                    symbol_check = f"{symbol}USDT"
+                else:
+                    symbol_check = symbol
+                    symbol = symbol.replace("USDT", "")
+                
                 try:
                     async with httpx.AsyncClient(timeout=10.0) as client:
                         response = await client.get("https://api.binance.com/api/v3/exchangeInfo")
                         if response.status_code == 200:
                             data = response.json()
                             symbols = [s["symbol"] for s in data["symbols"] 
-                                      if s["quoteAsset"] == "USDT" and s["status"] == "TRADING"][:50]
-                            return {
-                                "jsonrpc": "2.0",
-                                "id": request_id,
-                                "result": {
-                                    "content": [
-                                        {"type": "text", "text": f"Supported pairs: {', '.join(symbols)}"}
-                                    ]
+                                      if s["quoteAsset"] == "USDT" and s["status"] == "TRADING"]
+                            
+                            if symbol_check in symbols:
+                                return {
+                                    "jsonrpc": "2.0",
+                                    "id": request_id,
+                                    "result": {
+                                        "content": [
+                                            {
+                                                "type": "text",
+                                                "text": f"✅ {symbol} is supported. You can request a signal for this pair."
+                                            }
+                                        ]
+                                    }
                                 }
-                            }
-                except:
-                    pass
-                return {
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "result": {
-                        "content": [
-                            {"type": "text", "text": "BTCUSDT, ETHUSDT, SOLUSDT, DOGEUSDT, XRPUSDT"}
-                        ]
+                            else:
+                                # Поиск похожих пар
+                                similar = [s.replace("USDT", "") for s in symbols if symbol_check[:3] in s or s[:3] in symbol_check]
+                                similar = similar[:5]
+                                suggestion = f"\n\nDid you mean: {', '.join(similar)}" if similar else ""
+                                return {
+                                    "jsonrpc": "2.0",
+                                    "id": request_id,
+                                    "result": {
+                                        "content": [
+                                            {
+                                                "type": "text",
+                                                "text": f"❌ {symbol} is NOT supported.{suggestion}"
+                                            }
+                                        ]
+                                    }
+                                }
+                except Exception as e:
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": f"⚠️ Could not fetch exchange info. Please try again later. Error: {str(e)}"
+                                }
+                            ]
+                        }
                     }
-                }
         
         if method == "ping":
             return {
@@ -208,7 +260,6 @@ async def mcp_health(request: Request):
 
 app.mount("/mcp", mcp_app)
 logger.info("✅ MCP server mounted at /mcp")
-
 # ============================================================
 # БАЗОВЫЙ PAYMENT_CONFIG
 # ============================================================
