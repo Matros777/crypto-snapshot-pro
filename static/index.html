@@ -561,9 +561,17 @@
         const walletBalanceEl = document.getElementById('walletBalance');
         const walletBalanceRow = document.getElementById('walletBalanceRow');
 
+        let isConnecting = false;
+
         async function connectWallet() {
+            // Защита от повторных/параллельных вызовов (иначе MetaMask
+            // отвечает "wallet_requestPermissions already pending")
+            if (isConnecting) return;
+            isConnecting = true;
+
             if (typeof window.ethereum === 'undefined') {
                 showError('Please install MetaMask.');
+                isConnecting = false;
                 return;
             }
 
@@ -577,11 +585,13 @@
                 const accounts = await provider.send("eth_requestAccounts", []);
                 if (!Array.isArray(accounts) || accounts.length === 0) {
                     showError('No accounts returned. Please unlock MetaMask and try again.');
+                    isConnecting = false;
                     return;
                 }
                 address = accounts[0];
                 if (typeof address !== 'string' || !ethers.utils.isAddress(address)) {
                     showError('Invalid wallet address returned by MetaMask: ' + String(address));
+                    isConnecting = false;
                     return;
                 }
                 // Явно привязываем signer к полученному адресу
@@ -599,6 +609,7 @@
                         return;
                     } catch (e) {
                         showError('Please switch to Base network.');
+                        isConnecting = false;
                         return;
                     }
                 }
@@ -610,7 +621,18 @@
                 getSignalBtn.disabled = false;
 
             } catch (error) {
-                showError('Failed to connect wallet: ' + error.message);
+                // Если запрос прав уже висит в MetaMask - это НЕ ошибка,
+                // просто пользователь ещё не подтвердил попап.
+                const msg = (error && error.message) || String(error);
+                if (msg.includes('already pending')) {
+                    showError('MetaMask: please confirm the connection request in the MetaMask popup.');
+                } else if (error && (error.code === 4001 || error.code === 'ACTION_REJECTED')) {
+                    showError('Connection rejected in MetaMask. Click Connect Wallet to try again.');
+                } else {
+                    showError('Failed to connect wallet: ' + msg);
+                }
+            } finally {
+                isConnecting = false;
             }
         }
 
@@ -833,22 +855,40 @@
         }
 
         window.addEventListener('load', () => {
+            // НЕ вызываем connectWallet() автоматически - это отправляет
+            // eth_requestAccounts и запрос прав "зависает" в MetaMask,
+            // из-за чего следующий клик падает с "already pending".
+            // Только пассивно проверяем, был ли кошелёк уже подключён.
             if (window.ethereum) {
                 window.ethereum.request({ method: 'eth_accounts' }).then(accounts => {
-                    if (accounts.length > 0) connectWallet();
+                    if (Array.isArray(accounts) && accounts.length > 0 && !signer) {
+                        // уже подключён ранее - просто показываем адрес
+                        const known = accounts[0];
+                        if (typeof known === 'string' && ethers.utils.isAddress(known)) {
+                            address = known;
+                            signer = provider ? provider.getSigner(address) : null;
+                            walletStatusEl.textContent = `🟢 ${known.slice(0,6)}...${known.slice(-4)}`;
+                            walletStatusEl.classList.add('connected');
+                            getSignalBtn.disabled = false;
+                            try {
+                                provider = new ethers.providers.Web3Provider(window.ethereum);
+                                signer = provider.getSigner(address);
+                            } catch (e) {}
+                        }
+                    }
                 }).catch(() => {});
             }
         });
 
         if (window.ethereum) {
             window.ethereum.on('accountsChanged', function(accounts) {
-                if (accounts.length === 0) {
+                if (Array.isArray(accounts) && accounts.length === 0) {
                     walletStatusEl.textContent = 'Connect Wallet';
                     walletStatusEl.classList.remove('connected');
                     signer = null;
                     address = null;
                     getSignalBtn.disabled = true;
-                } else {
+                } else if (!isConnecting) {
                     connectWallet();
                 }
             });
