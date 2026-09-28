@@ -569,9 +569,23 @@
 
             try {
                 provider = new ethers.providers.Web3Provider(window.ethereum);
-                await provider.send("eth_requestAccounts", []);
-                signer = provider.getSigner();
-                address = await signer.getAddress();
+
+                // Берём адрес НАПРЯМУЮ из eth_requestAccounts (как массив),
+                // а не через signer.getAddress() — это защищает от бага ethers v5,
+                // когда провайдер возвращает accounts в нестандартном формате
+                // (ошибка "invalid address (value=...)").
+                const accounts = await provider.send("eth_requestAccounts", []);
+                if (!Array.isArray(accounts) || accounts.length === 0) {
+                    showError('No accounts returned. Please unlock MetaMask and try again.');
+                    return;
+                }
+                address = accounts[0];
+                if (typeof address !== 'string' || !ethers.utils.isAddress(address)) {
+                    showError('Invalid wallet address returned by MetaMask: ' + String(address));
+                    return;
+                }
+                // Явно привязываем signer к полученному адресу
+                signer = provider.getSigner(address);
 
                 const network = await provider.getNetwork();
                 if (network.chainId !== CHAIN_ID) {
